@@ -22,14 +22,25 @@ provider-agnostic so more (e.g. SoHo House) drop in as one module.
 
 ## Layout
 
+A pnpm workspace. The domain logic lives in `packages/core` behind ports; every entry point
+(`apps/*`) is a thin adapter over the same application surface.
+
 ```
-packages/shared   TS types + zod schemas
-apps/server       Express API, scheduler, providers, credentials, db
-apps/web          React dashboard
-scripts/login.ts  off-box headed login → pushes a token to the ingest endpoint
+packages/shared    TS types + zod schemas — the vocabulary every package shares
+packages/core      domain logic: ports, services, scan engine, scheduler, and the
+                   provider / credentials / notifier / persistence adapters
+packages/testkit   in-memory port fakes for tests
+packages/fixtures  captured provider API responses for tests
+apps/server        Express API + polling scheduler + static dashboard host
+apps/web           React + Vite dashboard
+apps/cli           command-line interface over the application
+apps/mcp           Model Context Protocol server (stdio + streamable HTTP)
+tools/login        off-box headed login → pushes a token to the ingest endpoint
 ```
 
 ## Getting started
+
+Requires Node 22+ and pnpm.
 
 ```sh
 cp .env.example .env   # fill in creds (or set CREDENTIALS_PROVIDER=vaultwarden)
@@ -37,4 +48,13 @@ pnpm install
 pnpm scan              # one scan pass (dev)
 ```
 
-See `.env.example` for configuration.
+### Common commands
+
+```sh
+pnpm cli -- --help     # CLI usage (watches, scan, book, …)
+pnpm dev:server        # run the API + scheduler
+pnpm dev:web           # run the dashboard
+pnpm ci                # typecheck + lint + test across the workspace
+```
+
+See `.env.example` for configuration and `deploy/README.md` for running the container.

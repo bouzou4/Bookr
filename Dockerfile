@@ -35,8 +35,10 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 # regardless of which provider a given deployment selects at runtime via env.
 RUN npm install --global @bitwarden/cli
 
-# Install dependencies first so this layer is cached across source-only changes.
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# Install dependencies first so this layer is cached across source-only changes. tsconfig.base.json
+# is required at build time too: every package's tsconfig extends it (apps/web's "build" script
+# runs a real `tsc --noEmit`, so a missing base config fails the build, not just local type-checking).
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
 COPY tools ./tools

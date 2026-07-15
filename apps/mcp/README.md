@@ -47,9 +47,9 @@ package has no opinion on transport beyond the two entry points below.
 ## Running standalone
 
 The standalone entry points (`src/stdio.ts`, `src/http.ts`) resolve their `BookrApp` from
-`src/bootstrap.ts`, a placeholder that throws until a real composition root replaces it. Until
-then, run this package as a library with your own `BookrApp` instance, or use the tests as a
-reference for wiring one in directly.
+`src/bootstrap.ts`, which loads configuration and calls `createBookr` (`@bookr/core/app`) to
+construct the real adapters. To embed the server in your own process instead, use it as a library
+with a `BookrApp` you build yourself (see below).
 
 ### stdio
 
@@ -69,6 +69,18 @@ pnpm --filter @bookr/mcp start:http
 Listens on `PORT` (default `3333`) and serves the MCP streamable-HTTP transport at `/mcp`. Each
 request gets a fresh server/transport pair (stateless mode) — there is no session state to
 resume across requests, matching the MCP SDK's recommended pattern for stateless deployments.
+
+**This transport exposes the full application, including `book_slot`, so treat it as a control
+plane.** It is guarded accordingly:
+
+- **Bind address** — `MCP_HOST` (default `127.0.0.1`). It binds loopback-only by default, so it
+  is not reachable off the machine unless you deliberately widen it.
+- **Auth** — `MCP_AUTH_TOKEN`, when set, requires every request to carry
+  `Authorization: Bearer <token>` (compared in constant time; a missing/wrong token gets `401`).
+- **Fail-safe** — binding a non-loopback `MCP_HOST` **without** `MCP_AUTH_TOKEN` is refused at
+  startup, so the control plane can never be exposed to the network unauthenticated by accident.
+
+The stdio transport carries no network surface, so it needs none of this.
 
 ## Testing approach
 

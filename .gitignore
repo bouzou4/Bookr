@@ -10,6 +10,9 @@ build/
 # test coverage
 coverage/
 
+# generated API docs (TypeDoc) — built on demand / in CI, not committed
+docs/api/
+
 # runtime state (bind-mounted in prod)
 data/
 *.sqlite

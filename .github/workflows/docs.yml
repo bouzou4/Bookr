@@ -1,0 +1,60 @@
+# Build the TypeDoc API reference from the workspace's TSDoc and publish it to GitHub Pages.
+#
+# Requires Pages to be enabled once, with "Source: GitHub Actions"
+# (repo Settings → Pages). Until then this workflow builds the docs but the deploy step is a no-op.
+name: API docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege for a Pages deploy: read the repo, write the Pages artifact, mint the OIDC token.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one docs deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build typedoc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (pnpm via packageManager field)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate API docs
+        run: pnpm run docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/api
+
+  deploy:
+    name: deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

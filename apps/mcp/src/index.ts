@@ -8,7 +8,7 @@
  */
 
 export { createMcpServer } from "./server.ts";
-export { createHttpRequestListener, MCP_HTTP_PATH, runHttp } from "./http.ts";
+export { createHttpRequestListener, MCP_HTTP_PATH, runHttp, type HttpListenerOptions } from "./http.ts";
 export { runStdio } from "./stdio.ts";
 export { getApp } from "./bootstrap.ts";
 export * from "./schemas.ts";

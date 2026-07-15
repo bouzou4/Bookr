@@ -58,3 +58,15 @@ pnpm ci                # typecheck + lint + test across the workspace
 ```
 
 See `.env.example` for configuration and `deploy/README.md` for running the container.
+
+## API documentation
+
+Every exported symbol carries TSDoc (lint-enforced). [TypeDoc](https://typedoc.org) turns it into
+a browsable API reference across all workspace packages:
+
+```sh
+pnpm run docs          # generates the site into docs/api/ (git-ignored)
+```
+
+On push to `main`, the `API docs` workflow builds and publishes it to GitHub Pages (enable once via
+repo **Settings → Pages → Source: GitHub Actions**).

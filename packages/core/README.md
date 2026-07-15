@@ -16,8 +16,8 @@ without inspecting provider-specific messages).
 The application logic, depending only on ports: watch management, ad-hoc availability, venue
 resolution, the scan engine (venue-local/DST-safe window filtering, dedupe with reappearance
 re-alerting, capability-gated auto-book), booking, credential status/ingest, activity, health,
-the drop-timing logger, and the scheduler (pure backoff state machine + jitter + staggering +
-single-flight).
+the drop-timing logger, and the scheduler (pure per-venue backoff state machine + one-sided
+jitter + single-flight, recovering from an unexpected pass fault instead of dying).
 
 ## Adapters (`src/adapters/`)
 Concrete implementations of the outbound ports:

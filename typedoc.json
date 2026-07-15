@@ -1,0 +1,25 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Bookr API",
+  "entryPointStrategy": "packages",
+  "entryPoints": [
+    "packages/shared",
+    "packages/core",
+    "packages/testkit",
+    "packages/fixtures",
+    "apps/cli",
+    "apps/mcp",
+    "apps/server",
+    "tools/login"
+  ],
+  "out": "docs/api",
+  "includeVersion": true,
+  "validation": {
+    "notExported": false,
+    "invalidLink": true,
+    "notDocumented": false
+  },
+  "navigationLinks": {
+    "Repository": "https://github.com/bouzou4/Bookr"
+  }
+}

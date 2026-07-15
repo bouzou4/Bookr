@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Off-box interactive login capture tool: drives a real headed browser through a provider login and hands the resulting session to Bookr's ingest endpoint.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "start": "tsx src/run.ts",
     "typecheck": "tsc --noEmit",

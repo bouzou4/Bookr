@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Pluggable reservation scanner — watches booking providers (Resy first) for newly-freed reservations and alerts you.",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -14,6 +15,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "ci": "pnpm typecheck && pnpm lint && pnpm test",
+    "docs": "typedoc",
     "dev:server": "pnpm --filter @bookr/server dev",
     "dev:web": "pnpm --filter @bookr/web dev",
     "dev:mcp": "pnpm --filter @bookr/mcp dev",
@@ -22,13 +24,14 @@
     "login": "pnpm --filter @bookr/login-tool start"
   },
   "devDependencies": {
-    "typescript": "catalog:",
-    "tsx": "catalog:",
-    "vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
-    "typescript-eslint": "catalog:",
     "eslint-plugin-jsdoc": "catalog:",
-    "eslint-plugin-tsdoc": "catalog:"
+    "eslint-plugin-tsdoc": "catalog:",
+    "tsx": "catalog:",
+    "typedoc": "^0.28.20",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
   }
 }

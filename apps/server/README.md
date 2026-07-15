@@ -17,14 +17,16 @@ const server = createServer(app /* BookrApp */, {
   uiPassword: process.env.UI_PASSWORD!,
   ingestToken: process.env.INGEST_TOKEN!,
   dataDir: process.env.DATA_DIR ?? "./data",
-  webRoot: "/app/web/dist", // omit for API-only mode
+  webRoot: "/app/public", // omit for API-only mode; the container image sets WEB_ROOT to this
 });
 server.listen(8080);
 ```
 
-The production entry point (`main.ts`) obtains the wired application and configuration from
-`bootstrap.ts`, which the deployment composition root supplies. Until then `bootstrap()` throws,
-so the package builds and type-checks standalone.
+The production entry point (`main.ts`) awaits `bootstrap()` — the composition root that calls
+`createBookr` to build the real adapters and derive the `ServerConfig` — then binds the listener,
+**starts the polling scheduler**, and installs signal (`SIGTERM`/`SIGINT`) and last-resort error
+handlers so a redeploy drains in-flight requests and a stray fault can't leave a half-dead process
+serving traffic. The API and the scheduler share this one process.
 
 ## REST surface
 
@@ -41,7 +43,7 @@ All application routes live under `/api`:
 | `GET /api/credentials` | cookie | `credentials.status` |
 | `POST /api/book` | cookie | `booking.book` — **403 unless the watch has `autobook`** |
 | `POST /api/ingest/:provider` | **bearer token**, not cookie | `credentials.ingestSession` |
-| `GET /api/health` | none | `health.status` |
+| `GET /api/health` | none | `health.status` — **liveness only** (`ok`, `lastPassAt`, `schedulerRunning`); per-provider session detail stays behind the cookie guard on `GET /api/credentials` |
 
 Request bodies are validated with the shared zod schemas before any application call; a failure
 returns `400` with the issues.
@@ -51,7 +53,8 @@ returns `400` with the issues.
 - `helmet()` default security headers; `x-powered-by` disabled; **no CORS** (same-origin only).
 - Single-user session auth via `express-session` backed by a `better-sqlite3` store. The cookie
   is `__Host-bookr.sid` — `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` — and `trust proxy` is
-  set to one hop so `Secure` works behind a TLS-terminating reverse proxy.
+  configurable via `TRUST_PROXY` (default `1`, trusting one TLS-terminating hop so `Secure`
+  works behind a reverse proxy; set `0` when nothing fronts the app so client IPs can't be spoofed).
 - Rate limits: login `5 / 15 min`, ingest `30 / min` (per IP).
 - The ingest bearer token and the dashboard password are compared with `crypto.timingSafeEqual`
   after a length check; an unset secret rejects every attempt.

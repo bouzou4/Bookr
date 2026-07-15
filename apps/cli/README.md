@@ -54,9 +54,10 @@ pnpm --filter @bookr/cli start -- watch list --json
 
 ## Architecture
 
-- `bootstrap.ts` is a placeholder — it throws until the real composition root (concrete
-  persistence, provider, notifier, and credential adapters) is wired in elsewhere. `main.ts` is
-  the only file that calls it.
+- `bootstrap.ts` is the composition root: it loads configuration and calls `createBookr`
+  (`@bookr/core/app`) to construct the real adapters (SQLite persistence, the Resy provider, the
+  apprise notifier, and the configured credentials provider), returning a live `BookrApp`.
+  `main.ts` is the only file that calls it.
 - `createCli(app, io?)` (in `cli.ts`) builds a fully configured, unparsed `commander` program
   against the `BookrApp` interface. It never touches `process.stdout`/`process.stderr`/
   `process.exit` directly, so it is safe to construct and parse repeatedly in tests.

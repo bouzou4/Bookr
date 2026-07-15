@@ -1,0 +1,40 @@
+# Bookr — generic Compose deployment for the API/scheduler service.
+#
+# Every deployment-specific value (public hostname, credentials, provider keys, session
+# secret, poll cadence, etc.) is supplied through environment variables — see .env.example
+# for the full contract, parsed once by the app's config loader. This file intentionally
+# contains no hostnames, IPs, or account-specific identifiers, so it's safe to publish
+# alongside the source.
+#
+# The service expects to sit behind a reverse proxy that terminates TLS and forwards to it
+# over plain HTTP on an existing Docker network (here left as a placeholder external network
+# named "proxy-net" — rename to whatever your proxy actually uses). If you don't have one,
+# delete the "networks" blocks below and uncomment the "ports" mapping instead.
+
+services:
+  bookr:
+    build:
+      context: .
+    image: ${BOOKR_IMAGE:-bookr:latest}
+    restart: always
+    env_file:
+      - .env
+    environment:
+      # Fixed to match the container's exposed port; change PORT in .env, not here.
+      PORT: ${PORT:-8080}
+      DATA_DIR: /app/data
+    volumes:
+      # Bind-mount so the SQLite database (and any other persisted state) survives
+      # container recreation. Point this at wherever your host keeps application data.
+      - ${BOOKR_DATA_DIR:-./data}:/app/data
+    networks:
+      - proxy-net
+    # Uncomment if there's no reverse proxy sharing a Docker network with this service:
+    # ports:
+    #   - "${PORT:-8080}:${PORT:-8080}"
+
+networks:
+  # Pre-existing network your reverse proxy's containers already share. Rename to match
+  # your setup; it is not created by this file (external: true).
+  proxy-net:
+    external: true

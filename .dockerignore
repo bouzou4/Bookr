@@ -1,0 +1,30 @@
+# Keep the build context small and avoid ever baking host-local state into the image.
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/*.tsbuildinfo
+
+# Runtime state — never ship a developer's local data or secrets into the image.
+data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+.env.*
+!.env.example
+
+# VCS / editor / OS cruft.
+.git
+.gitignore
+.DS_Store
+*.log
+
+# Browser automation is intentionally excluded from the server image.
+playwright-report
+test-results
+
+Dockerfile
+docker-compose.yml
+.dockerignore

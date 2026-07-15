@@ -1,0 +1,39 @@
+{
+  "name": "@bookr/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server facade exposing BookrApp as Model Context Protocol tools over stdio and streamable-HTTP transports.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/stdio.ts",
+    "start:stdio": "tsx src/stdio.ts",
+    "start:http": "tsx src/http.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --coverage",
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@bookr/core": "workspace:*",
+    "@bookr/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "catalog:",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@bookr/testkit": "workspace:*",
+    "@types/node": "^22.10.0",
+    "typescript": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "typescript-eslint": "catalog:",
+    "eslint-plugin-jsdoc": "catalog:",
+    "eslint-plugin-tsdoc": "catalog:",
+    "tsup": "^8.3.5"
+  }
+}

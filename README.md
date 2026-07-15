@@ -61,12 +61,5 @@ See `.env.example` for configuration and `deploy/README.md` for running the cont
 
 ## API documentation
 
-Every exported symbol carries TSDoc (lint-enforced). [TypeDoc](https://typedoc.org) turns it into
-a browsable API reference across all workspace packages:
-
-```sh
-pnpm run docs          # generates the site into docs/api/ (git-ignored)
-```
-
-On push to `main`, the `API docs` workflow builds and publishes it to GitHub Pages (enable once via
-repo **Settings → Pages → Source: GitHub Actions**).
+Every exported symbol carries TSDoc (lint-enforced). Generate a browsable
+[TypeDoc](https://typedoc.org) reference across all workspace packages with `pnpm run docs`.

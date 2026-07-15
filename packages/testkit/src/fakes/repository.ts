@@ -85,6 +85,13 @@ export class FakeRepository implements Repository {
         if (pastReservation || stale) this.seenMap.delete(key);
       }
     },
+    markAbsent: (seenBefore: string, disappearedAt: string): void => {
+      for (const [key, entry] of this.seenMap) {
+        if (entry.disappearedAt == null && entry.lastSeenAt < seenBefore) {
+          this.seenMap.set(key, { ...entry, disappearedAt });
+        }
+      }
+    },
   };
 
   /** Activity-log persistence. */

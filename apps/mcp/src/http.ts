@@ -6,6 +6,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { BookrApp } from "@bookr/core";
 import { createMcpServer } from "./server.ts";
@@ -13,6 +14,33 @@ import { getApp } from "./bootstrap.ts";
 
 /** Path the streamable-HTTP transport is served at. */
 export const MCP_HTTP_PATH = "/mcp";
+
+/** Options for {@link createHttpRequestListener}. */
+export interface HttpListenerOptions {
+  /**
+   * When set, every request must carry `Authorization: Bearer <authToken>` (compared in constant
+   * time). This transport exposes the full application — including auto-book — so a network-facing
+   * deployment must gate it; omit only for a loopback-bound instance.
+   */
+  authToken?: string;
+}
+
+/** Hosts that are not reachable off the local machine. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+/**
+ * Constant-time comparison of a presented bearer token against the expected one.
+ *
+ * @param expected - The configured token.
+ * @param presented - The token extracted from the request, if any.
+ * @returns True if they match.
+ */
+function bearerMatches(expected: string, presented: string | undefined): boolean {
+  if (presented === undefined) return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(presented);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 /**
  * Reads a request body to completion and parses it as JSON.
@@ -52,7 +80,9 @@ function writeProtocolError(res: ServerResponse, status: number, message: string
  */
 export function createHttpRequestListener(
   app: BookrApp,
+  options: HttpListenerOptions = {},
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const { authToken } = options;
   return async (req, res) => {
     if (req.url !== MCP_HTTP_PATH) {
       writeProtocolError(res, 404, "Not found.");
@@ -61,6 +91,14 @@ export function createHttpRequestListener(
     if (req.method !== "POST") {
       writeProtocolError(res, 405, "Method not allowed.");
       return;
+    }
+    if (authToken !== undefined) {
+      const header = req.headers.authorization;
+      const presented = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
+      if (!bearerMatches(authToken, presented)) {
+        writeProtocolError(res, 401, "Unauthorized.");
+        return;
+      }
     }
 
     const server = createMcpServer(app);
@@ -78,17 +116,28 @@ export function createHttpRequestListener(
 
 /** Port the standalone HTTP entry point listens on. Defaults to 3333. */
 const PORT = Number(process.env["PORT"] ?? 3333);
+/** Address to bind. Defaults to loopback so the control plane is not exposed unless asked. */
+const HOST = process.env["MCP_HOST"] ?? "127.0.0.1";
 
 /**
- * Wires the configured application to an HTTP server and starts listening.
+ * Wires the configured application to an HTTP server and starts listening. Binds loopback by
+ * default; a non-loopback bind is refused unless `MCP_AUTH_TOKEN` is set, so the auto-book-capable
+ * control plane is never exposed to the network without authentication.
  *
  * @returns A promise that resolves once the server is listening.
+ * @throws When bound to a non-loopback address without `MCP_AUTH_TOKEN`.
  */
 export async function runHttp(): Promise<void> {
-  const app = getApp();
-  const httpServer = createServer(createHttpRequestListener(app));
-  await new Promise<void>((resolve) => httpServer.listen(PORT, resolve));
-  console.error(`Bookr MCP server listening on http://localhost:${PORT}${MCP_HTTP_PATH}`);
+  const authToken = process.env["MCP_AUTH_TOKEN"];
+  if (!LOOPBACK_HOSTS.has(HOST) && (authToken === undefined || authToken.length === 0)) {
+    throw new Error(
+      `refusing to bind MCP HTTP transport to non-loopback host "${HOST}" without MCP_AUTH_TOKEN set`,
+    );
+  }
+  const app = await getApp();
+  const httpServer = createServer(createHttpRequestListener(app, { authToken }));
+  await new Promise<void>((resolve) => httpServer.listen(PORT, HOST, resolve));
+  console.error(`Bookr MCP server listening on http://${HOST}:${PORT}${MCP_HTTP_PATH}`);
 }
 
 /* v8 ignore start -- process wiring only exercised by actually launching the server. */

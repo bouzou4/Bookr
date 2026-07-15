@@ -49,11 +49,27 @@ function isNearExpiry(session: Session, now: Date): boolean {
   return new Date(session.expiresAt).getTime() - now.getTime() <= SESSION_REFRESH_LEAD_MS;
 }
 
-async function raiseChallenge(ctx: ServiceContext, provider: BookingProvider, session: Session): Promise<never> {
-  const challenged: Session = { ...session, state: "challenged", updatedAt: ctx.clock.now().toISOString() };
+function challengedError(provider: BookingProvider): ProviderError {
+  return new ProviderError("challenged", `${provider.name} session is challenged`, { retryable: false });
+}
+
+/**
+ * Persist a provider as challenged, announce it once, and throw. Persisting the `challenged`
+ * state is what pauses the provider: subsequent {@link ensureLiveSession} calls short-circuit on
+ * it without touching the provider again, so a captcha/step-up can never turn into a login storm.
+ * The provider stays paused until a fresh session is handed over via the credential service.
+ */
+async function raiseChallenge(
+  ctx: ServiceContext,
+  provider: BookingProvider,
+  session: Session | undefined,
+  now: Date,
+): Promise<never> {
+  const base: Session = session ?? { provider: provider.name, state: "challenged", data: null, updatedAt: now.toISOString() };
+  const challenged: Session = { ...base, provider: provider.name, state: "challenged", updatedAt: now.toISOString() };
   ctx.repository.sessions.put(challenged);
   ctx.repository.activity.record({
-    at: ctx.clock.now().toISOString(),
+    at: now.toISOString(),
     type: "auth-challenged",
     provider: provider.name,
     detail: `${provider.name} session challenged; hand over a fresh session`,
@@ -61,45 +77,70 @@ async function raiseChallenge(ctx: ServiceContext, provider: BookingProvider, se
   await ctx.notifier.notify("warning", {
     title: `${provider.name} needs attention`,
     body: `${provider.name} hit a login challenge. Sign in and hand over a fresh session to resume scanning.`,
+    link: ctx.config.publicBaseUrl,
   });
-  throw new ProviderError("challenged", `${provider.name} session is challenged`, { retryable: false });
+  throw challengedError(provider);
 }
 
 /**
  * Ensure a live, authenticated session for a provider, applying the credential state machine and
- * persisting the result. A challenged provider is paused: this records the event, warns, and
- * throws so the caller skips the provider until a session is handed over.
+ * persisting the result. A challenge from any authentication step — or a provider that cannot
+ * authenticate headlessly — pauses the provider: the challenged state is persisted, announced
+ * once, and thrown, so the next pass skips the provider (without re-notifying) until a session is
+ * handed over.
  *
  * @param ctx - The service context.
  * @param provider - The provider to obtain a session for.
  * @returns An active session.
  * @throws {@link ProviderError} With class `challenged` when the provider needs manual re-auth, or
- *   the underlying provider error when authentication fails.
+ *   the underlying provider error when authentication fails for another reason.
  */
 export async function ensureLiveSession(ctx: ServiceContext, provider: BookingProvider): Promise<Session> {
   const creds = await ctx.credentialsProvider.getProviderCredentials(provider.name);
   const now = ctx.clock.now();
-  let session = ctx.repository.sessions.get(provider.name);
+  const existing = ctx.repository.sessions.get(provider.name);
 
-  if (!session || session.state === "missing") {
-    session = await provider.authenticate(creds);
-  } else if (session.state === "challenged") {
-    // Still awaiting a handed-over session; do not hammer the provider.
-    throw new ProviderError("challenged", `${provider.name} session is challenged`, { retryable: false });
-  } else if (session.state === "expired" || isNearExpiry(session, now)) {
-    try {
-      session = await provider.refresh(session, creds);
-    } catch (err) {
-      if (classify(provider, err) === "auth-expired") {
-        session = await provider.authenticate(creds);
-      } else {
-        throw err;
+  // Already paused on a prior challenge: short-circuit without touching the provider or
+  // re-notifying — it was announced when first raised and stays paused until a handover.
+  if (existing && existing.state === "challenged") {
+    throw challengedError(provider);
+  }
+
+  const missing = !existing || existing.state === "missing";
+
+  // A provider that cannot authenticate headlessly (interactive captcha/step-up only) can never
+  // mint its own session; a missing session is therefore a standing challenge for the operator.
+  if (missing && !provider.capabilities.headlessAuth) {
+    return raiseChallenge(ctx, provider, existing, now);
+  }
+
+  let session: Session;
+  try {
+    if (!existing || existing.state === "missing") {
+      session = await provider.authenticate(creds);
+    } else if (existing.state === "expired" || isNearExpiry(existing, now)) {
+      try {
+        session = await provider.refresh(existing, creds);
+      } catch (err) {
+        if (classify(provider, err) === "auth-expired") {
+          session = await provider.authenticate(creds);
+        } else {
+          throw err;
+        }
       }
+    } else {
+      session = existing;
     }
+  } catch (err) {
+    // A login challenge from any auth step pauses the provider (see raiseChallenge).
+    if (classify(provider, err) === "challenged") {
+      return raiseChallenge(ctx, provider, existing, now);
+    }
+    throw err;
   }
 
   if (session.state === "challenged") {
-    return raiseChallenge(ctx, provider, session);
+    return raiseChallenge(ctx, provider, session, now);
   }
 
   const active: Session = { ...session, updatedAt: ctx.clock.now().toISOString() };

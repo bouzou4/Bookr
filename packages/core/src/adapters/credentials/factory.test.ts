@@ -10,6 +10,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     publicBaseUrl: "http://localhost:8080",
     pollIntervalSeconds: 60,
     pollJitterPct: 0.25,
+    trustProxy: 1,
     credentialsProvider: "env",
     apprise: { url: "http://localhost:8000", key: "bookr" },
     ingestToken: "",

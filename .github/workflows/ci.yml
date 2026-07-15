@@ -44,3 +44,34 @@ jobs:
 
       - name: Test (every package; each enforces its own line-coverage gate)
         run: pnpm run test
+
+  docker:
+    name: build image and smoke-test boot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t bookr:ci .
+
+      # Boot the image with throwaway secrets and confirm it actually serves health — this is what
+      # catches runtime wiring/config regressions (a missing entrypoint, an unset required env)
+      # that a package-level typecheck/lint/test cannot see.
+      - name: Smoke-test the container boots and serves /api/health
+        run: |
+          docker run -d --name bookr-ci \
+            -e SESSION_SECRET=ci-throwaway-secret \
+            -e UI_PASSWORD=ci -e INGEST_TOKEN=ci \
+            -e PORT=8080 -p 8080:8080 bookr:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/health >/dev/null; then
+              echo "container healthy"; exit 0
+            fi
+            sleep 2
+          done
+          echo "health check never succeeded"; docker logs bookr-ci; exit 1
+
+      - name: Container logs (always)
+        if: always()
+        run: docker logs bookr-ci || true

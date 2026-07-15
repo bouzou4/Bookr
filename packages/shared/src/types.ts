@@ -34,7 +34,11 @@ export interface ProviderCapabilities {
   headlessAuth: boolean;
   /** True if the provider can complete a booking programmatically. */
   autobook: boolean;
-  /** True if booking is a lock-then-confirm two-phase flow. */
+  /**
+   * Advisory: true if booking is a lock-then-confirm two-phase flow (a `locked-unconfirmed`
+   * result is possible). Informational — it shapes how callers present a partial booking rather
+   * than gating a code path.
+   */
   twoPhaseBook: boolean;
 }
 
@@ -156,8 +160,11 @@ export type ActivityType =
   | "slot-found"
   | "notified"
   | "booked"
+  | "cancelled"
   | "book-failed"
   | "auth-challenged"
+  | "session-ingested"
+  | "notify-failed"
   | "error"
   | "pass-complete";
 

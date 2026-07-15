@@ -17,7 +17,7 @@ import { bootstrap } from "./bootstrap.ts";
  * @returns Resolves once the command has finished and `process.exitCode` has been set.
  */
 export async function main(): Promise<void> {
-  const app = bootstrap();
+  const app = await bootstrap();
   process.exitCode = await runCli(app, process.argv.slice(2));
 }
 

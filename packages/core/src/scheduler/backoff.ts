@@ -92,14 +92,15 @@ export function backoffDelayMs(state: BackoffState, baseMs: number): number {
 }
 
 /**
- * Apply symmetric jitter of `±pct` to a delay, so passes never land on a fixed metronome.
+ * Add upward jitter of up to `pct` to a delay, so passes never land on a fixed metronome yet
+ * never dip below the base cadence. Jitter is one-sided (`[ms, ms * (1 + pct)]`) so the configured
+ * interval is a floor: the rate-limit design depends on passes never firing faster than the base.
  *
  * @param ms - The base delay in milliseconds.
- * @param pct - Jitter fraction in `[0, 1]` (e.g. `0.25` for ±25%).
+ * @param pct - Maximum upward jitter fraction in `[0, 1]` (e.g. `0.25` for up to +25%).
  * @param rng - Source of randomness in `[0, 1)`; defaults to `Math.random`.
- * @returns The jittered delay in milliseconds (never negative).
+ * @returns The jittered delay in milliseconds (never below `ms`).
  */
 export function jitter(ms: number, pct: number, rng: () => number = Math.random): number {
-  const factor = 1 + (rng() * 2 - 1) * pct;
-  return Math.max(0, Math.round(ms * factor));
+  return Math.round(ms * (1 + rng() * pct));
 }

@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 /** Starts `createHttpRequestListener` on an ephemeral loopback port and returns its base URL. */
-async function listen(): Promise<URL> {
+async function listen(options?: { authToken?: string }): Promise<URL> {
   const app = createFakeBookr({
     watches: [
       {
@@ -36,7 +36,7 @@ async function listen(): Promise<URL> {
       },
     ],
   });
-  server = createServer(createHttpRequestListener(app));
+  server = createServer(createHttpRequestListener(app, options));
   await new Promise<void>((resolve) => server?.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return new URL(`http://127.0.0.1:${port}${MCP_HTTP_PATH}`);
@@ -70,5 +70,27 @@ describe("createHttpRequestListener", () => {
     const url = await listen();
     const response = await fetch(new URL("/not-mcp", url), { method: "POST" });
     expect(response.status).toBe(404);
+  });
+
+  it("rejects a request with a missing or wrong bearer token when auth is configured", async () => {
+    const url = await listen({ authToken: "s3cret" });
+    const noAuth = await fetch(url, { method: "POST", body: "{}" });
+    expect(noAuth.status).toBe(401);
+    const wrong = await fetch(url, { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" });
+    expect(wrong.status).toBe(401);
+  });
+
+  it("accepts a request with the correct bearer token", async () => {
+    const url = await listen({ authToken: "s3cret" });
+    const client = new Client({ name: "http-auth-client", version: "0.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: "Bearer s3cret" } } }),
+    );
+    try {
+      const { tools } = await client.listTools();
+      expect(tools.map((t) => t.name)).toContain("list_watches");
+    } finally {
+      await client.close();
+    }
   });
 });

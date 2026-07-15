@@ -89,5 +89,13 @@ export const bookRequestSchema = z.object({
 /** Validates a dashboard login. */
 export const loginSchema = z.object({ password: z.string().min(1) });
 
-/** Validates a session-ingest payload (the provider blob is opaque here). */
-export const ingestSchema = z.object({ session: z.unknown() });
+/**
+ * Validates a session-ingest payload. The provider blob is opaque, but it must be a non-empty
+ * object: an empty or missing session would persist an "active" session carrying no credentials,
+ * silently masking the challenge the handover was meant to clear.
+ */
+export const ingestSchema = z.object({
+  session: z
+    .record(z.string(), z.unknown())
+    .refine((s) => Object.keys(s).length > 0, { message: "session must be a non-empty object" }),
+});

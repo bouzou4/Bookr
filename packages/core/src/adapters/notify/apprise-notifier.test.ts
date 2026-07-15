@@ -118,7 +118,7 @@ describe("AppriseNotifier", () => {
 
     await expect(
       target.notify("urgent", { title: "Table freed", body: "Slot at 7pm" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ delivered: false });
 
     expect(logger).toHaveBeenCalledTimes(2);
     expect(logger.mock.calls[0]?.[0]).toContain("424");
@@ -134,7 +134,7 @@ describe("AppriseNotifier", () => {
 
     await expect(
       target.notify("warning", { title: "Auth expired", body: "Needs a refresh." }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ delivered: false });
 
     expect(failingFetch).toHaveBeenCalledTimes(1);
     expect(logger).toHaveBeenCalledTimes(1);
@@ -192,7 +192,7 @@ describe("AppriseNotifier", () => {
     const target = new AppriseNotifier({ url: `${APPRISE_URL}/`, key: APPRISE_KEY });
     await expect(
       target.notify("warning", { title: "t", body: "b" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ delivered: true });
   });
 
   it("falls back to console.error when no logger override is supplied", async () => {
@@ -206,7 +206,7 @@ describe("AppriseNotifier", () => {
     try {
       await expect(
         notifier().notify("warning", { title: "t", body: "b" }),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ delivered: false });
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0]?.[0]).toContain("apprise-notifier");
     } finally {
@@ -229,7 +229,7 @@ describe("AppriseNotifier", () => {
 
     await expect(
       target.notify("warning", { title: "t", body: "b" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ delivered: false });
 
     expect(logger).toHaveBeenCalledTimes(1);
     expect(logger.mock.calls[0]?.[1]).toBe("<unreadable response body>");

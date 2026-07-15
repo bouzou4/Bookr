@@ -28,6 +28,8 @@
     "msw": "^2.6.6",
     "eslint": "catalog:",
     "typescript-eslint": "catalog:",
+    "eslint-plugin-jsdoc": "catalog:",
+    "eslint-plugin-tsdoc": "catalog:",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
     "@types/react": "^18.3.12",

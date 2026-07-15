@@ -82,6 +82,10 @@ RUN groupadd --gid 1001 bookr \
 COPY --from=build --chown=bookr:bookr /prod/server ./
 COPY --from=build --chown=bookr:bookr /prod/web-static ./public
 
+# Point the server at the bundled dashboard build so it serves the SPA (and its /api mounts the
+# static assets). Without this the server runs API-only and browser navigations 404.
+ENV WEB_ROOT=/app/public
+
 # Bind-mounted at runtime for the SQLite data file and any other persisted state; created here
 # so the non-root user owns it even before a volume is mounted over it.
 RUN mkdir -p /app/data && chown bookr:bookr /app/data
@@ -89,13 +93,15 @@ RUN mkdir -p /app/data && chown bookr:bookr /app/data
 USER bookr
 
 # Informational only — the container's actual published port is whatever PORT resolves to
-# (see the env contract); compose maps it explicitly rather than relying on this default.
-EXPOSE 3000
+# (see the env contract); compose maps it explicitly rather than relying on this default. Kept
+# equal to the app's default PORT (8080) to avoid confusing docs/tooling that read EXPOSE.
+EXPOSE 8080
 
 # Uses Node's built-in fetch instead of curl/wget so the runtime image doesn't need either
-# installed just for this. Hits the shallow, unauthenticated health endpoint.
+# installed just for this. Hits the shallow, unauthenticated health endpoint. The fallback port
+# matches the app's default PORT so the check works even when PORT is left unset.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||'3000')+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||'8080')+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Assumes the server package's "build" script compiles its entry (currently named "main.ts" in
 # source) to "dist/main.js". Update this if the server's build output path/filename differs.

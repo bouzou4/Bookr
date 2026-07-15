@@ -59,6 +59,9 @@ export function createSeenRepository(db: Database.Database): SeenRepository {
   `);
   const allKeysStmt = db.prepare("SELECT key, last_seen_at FROM seen");
   const deleteStmt = db.prepare("DELETE FROM seen WHERE key = ?");
+  const markAbsentStmt = db.prepare(
+    "UPDATE seen SET disappeared_at = @disappearedAt WHERE last_seen_at < @seenBefore AND disappeared_at IS NULL",
+  );
 
   return {
     get: (key) => {
@@ -94,6 +97,9 @@ export function createSeenRepository(db: Database.Database): SeenRepository {
         for (const key of keys) deleteStmt.run(key);
       });
       deleteMany(staleKeys);
+    },
+    markAbsent: (seenBefore, disappearedAt) => {
+      markAbsentStmt.run({ seenBefore, disappearedAt });
     },
   };
 }

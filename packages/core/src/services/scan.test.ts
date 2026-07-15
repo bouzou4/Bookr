@@ -54,6 +54,22 @@ describe("createScanService", () => {
     expect(repo.activity.recent({ type: "pass-complete" })).toHaveLength(1);
   });
 
+  it("records notify-failed and does not count a missed alert as notified", async () => {
+    const slot = makeSlot({ date: "2026-07-15", start: "19:00:00" });
+    const { ctx, repo, notifier } = makeHarness(new FakeProvider({ slots: [slot] }));
+    notifier.failWith = "call: request failed";
+    repo.watches.create(makeWatch());
+
+    const report = await createScanService(ctx).runOnce();
+
+    expect(report.newSlots).toBe(1); // the slot was still found
+    expect(report.notified).toBe(0); // ...but the alert did not land, so it is not counted
+    expect(repo.activity.recent({ type: "notified" })).toHaveLength(0);
+    const failed = repo.activity.recent({ type: "notify-failed" });
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.detail).toContain("request failed");
+  });
+
   it("filters slots outside the time window", async () => {
     const slot = makeSlot({ start: "12:00:00" }); // outside 18:00-21:00
     const { ctx, notifier } = makeHarness(new FakeProvider({ slots: [slot] }));
@@ -108,6 +124,25 @@ describe("createScanService", () => {
     clock.advance(60_000);
     slots.push(makeSlot({ start: "19:00:00" })); // reappears
     const third = await scan.runOnce();
+
+    expect(third.notified).toBe(1);
+    expect(notifier.bySeverity("urgent")).toHaveLength(2);
+  });
+
+  it("re-alerts a reappearance even across a restart (durable, not in-memory)", async () => {
+    const slots = [makeSlot({ start: "19:00:00" })];
+    const { ctx, clock, notifier } = makeHarness(new FakeProvider({ slots }));
+    ctx.repository.watches.create(makeWatch());
+
+    await createScanService(ctx).runOnce(); // present → alert
+    clock.advance(60_000);
+    slots.length = 0; // disappears → marked absent in the repository
+    await createScanService(ctx).runOnce();
+    clock.advance(60_000);
+    slots.push(makeSlot({ start: "19:00:00" })); // reappears
+    // A brand-new scan service (as after a process restart) has no in-memory history, yet the
+    // persisted disappearedAt still arms the re-alert.
+    const third = await createScanService(ctx).runOnce();
 
     expect(third.notified).toBe(1);
     expect(notifier.bySeverity("urgent")).toHaveLength(2);

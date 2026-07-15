@@ -61,8 +61,11 @@ const activityQuerySchema = z.object({
       "slot-found",
       "notified",
       "booked",
+      "cancelled",
       "book-failed",
       "auth-challenged",
+      "session-ingested",
+      "notify-failed",
       "error",
       "pass-complete",
     ])
@@ -96,8 +99,11 @@ export function createApiRouter(app: BookrApp, config: ServerConfig): Router {
   });
 
   // ── Unauthenticated ──────────────────────────────────────────────────────
+  // Liveness only. Per-provider session state/expiry is sensitive and stays behind the session
+  // guard (see GET /credentials); this endpoint exposes just enough for a load balancer/healthcheck.
   router.get("/health", (_req, res) => {
-    res.json(app.health.status());
+    const { ok, lastPassAt, schedulerRunning } = app.health.status();
+    res.json({ ok, lastPassAt, schedulerRunning });
   });
 
   router.post("/auth/login", loginLimiter, (req, res) => {

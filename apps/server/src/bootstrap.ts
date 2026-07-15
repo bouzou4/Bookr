@@ -24,14 +24,15 @@ export interface Bootstrapped {
  *
  * @returns The bootstrapped application and configuration.
  */
-export function bootstrap(): Bootstrapped {
+export async function bootstrap(): Promise<Bootstrapped> {
   const config = loadConfig(process.env);
-  const app: BookrApp = createBookr({ config, env: process.env });
+  const { app, secrets } = await createBookr({ config, env: process.env });
   const serverConfig: ServerConfig = {
-    sessionSecret: config.sessionSecret,
-    uiPassword: config.uiPassword,
-    ingestToken: config.ingestToken,
+    sessionSecret: secrets.sessionSecret,
+    uiPassword: secrets.uiPassword,
+    ingestToken: secrets.ingestToken,
     dataDir: config.dataDir,
+    trustProxy: config.trustProxy,
     ...(process.env.WEB_ROOT ? { webRoot: process.env.WEB_ROOT } : {}),
   };
   return { app, config: serverConfig };

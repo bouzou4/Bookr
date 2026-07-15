@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# test coverage
+coverage/
+
+# runtime state (bind-mounted in prod)
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# personal / scratch planning — never committed
+.planning/
+
+# playwright (off-box login capture)
+playwright-report/
+test-results/
+
+# misc
+.DS_Store
+*.log

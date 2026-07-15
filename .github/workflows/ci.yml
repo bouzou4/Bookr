@@ -1,0 +1,46 @@
+# Continuous integration for the Bookr workspace.
+#
+# Every package in the pnpm workspace must type-check, lint clean, and pass its tests with
+# the coverage gate its own vitest config enforces before a change can merge. Nothing here
+# talks to a real booking provider, notification service, or credentials vault — the test
+# suites run entirely against in-repo fakes/fixtures.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref so pushes to an open PR don't queue up stale runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: typecheck, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (pnpm via packageManager field)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (every package)
+        run: pnpm run typecheck
+
+      - name: Lint (every package, zero warnings tolerated)
+        run: pnpm run lint
+
+      - name: Test (every package; each enforces its own line-coverage gate)
+        run: pnpm run test

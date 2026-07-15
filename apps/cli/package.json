@@ -1,0 +1,39 @@
+{
+  "name": "@bookr/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "bookr": "./src/main.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --coverage",
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@bookr/core": "workspace:*",
+    "@bookr/shared": "workspace:*",
+    "commander": "^12.1.0",
+    "zod": "catalog:",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@bookr/testkit": "workspace:*",
+    "@types/node": "^22.10.2",
+    "typescript": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "typescript-eslint": "catalog:",
+    "eslint-plugin-jsdoc": "catalog:",
+    "eslint-plugin-tsdoc": "catalog:",
+    "tsup": "^8.3.5"
+  }
+}

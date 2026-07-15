@@ -1,0 +1,29 @@
+{
+  "name": "@bookr/login-tool",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Off-box interactive login capture tool: drives a real headed browser through a provider login and hands the resulting session to Bookr's ingest endpoint.",
+  "scripts": {
+    "start": "tsx src/run.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@bookr/shared": "workspace:*",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "typescript-eslint": "catalog:",
+    "eslint-plugin-jsdoc": "catalog:",
+    "eslint-plugin-tsdoc": "catalog:",
+    "undici": "^6.21.0",
+    "@types/node": "^22.10.0"
+  }
+}

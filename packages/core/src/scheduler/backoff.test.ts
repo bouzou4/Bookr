@@ -82,17 +82,17 @@ describe("backoffDelayMs", () => {
 });
 
 describe("jitter", () => {
-  it("returns the base delay when the rng is centred", () => {
-    expect(jitter(1000, 0.25, () => 0.5)).toBe(1000);
+  it("returns exactly the base delay at the rng floor", () => {
+    expect(jitter(1000, 0.25, () => 0)).toBe(1000);
   });
 
-  it("applies the full negative and positive swing at the rng extremes", () => {
-    expect(jitter(1000, 0.25, () => 0)).toBe(750);
+  it("applies the full upward swing at the rng maximum, and half at the midpoint", () => {
+    expect(jitter(1000, 0.25, () => 0.5)).toBe(1125);
     expect(jitter(1000, 0.25, () => 0.999999)).toBe(1250);
   });
 
-  it("never returns a negative delay", () => {
-    expect(jitter(100, 2, () => 0)).toBe(0);
+  it("never dips below the base delay (the configured interval is a floor)", () => {
+    expect(jitter(100, 2, () => 0)).toBe(100);
   });
 
   it("stays within the band across many samples (metronome avoidance)", () => {
@@ -107,7 +107,7 @@ describe("jitter", () => {
     const distinct = new Set(samples);
     expect(distinct.size).toBeGreaterThan(50); // not a fixed metronome
     for (const s of samples) {
-      expect(s).toBeGreaterThanOrEqual(base * (1 - pct));
+      expect(s).toBeGreaterThanOrEqual(base);
       expect(s).toBeLessThanOrEqual(base * (1 + pct));
     }
   });

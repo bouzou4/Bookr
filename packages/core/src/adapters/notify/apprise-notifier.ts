@@ -10,11 +10,11 @@
  */
 
 import type { Severity } from "@bookr/shared";
-import type { NotificationMessage, Notifier } from "../../ports/notifier.ts";
+import type { NotificationMessage, Notifier, NotifyResult } from "../../ports/notifier.ts";
 
 /** Location and identity of the apprise-api instance to notify through. */
 export interface AppriseConfig {
-  /** Base URL of the apprise-api server, e.g. `http://172.25.0.17:8000`. No trailing slash required. */
+  /** Base URL of the apprise-api server, e.g. `http://apprise.example.internal:8000`. No trailing slash required. */
   url: string;
   /** The apprise config key under which the notification target URLs are registered. */
   key: string;
@@ -62,8 +62,10 @@ const MAX_SMS_LENGTH = 160;
  * - `warning` (auth/operational problem): one `tag: "email"` POST.
  * - `info`: suppressed entirely — no request is sent.
  *
- * A non-2xx or network-failing response is logged loudly and swallowed: a notification
- * delivery failure must never interrupt or fail the scan pass that triggered it.
+ * A non-2xx or network-failing response is logged loudly and never thrown: a notification
+ * delivery failure must never interrupt or fail the scan pass that triggered it. The failure is
+ * instead reported to the caller through the returned {@link NotifyResult}, so a missed alert can
+ * be recorded and surfaced rather than silently assumed delivered.
  */
 export class AppriseNotifier implements Notifier {
   private readonly baseUrl: string;
@@ -89,36 +91,38 @@ export class AppriseNotifier implements Notifier {
    * @param severity - How urgent the alert is.
    * @param message - The alert content.
    */
-  async notify(severity: Severity, message: NotificationMessage): Promise<void> {
+  async notify(severity: Severity, message: NotificationMessage): Promise<NotifyResult> {
     switch (severity) {
-      case "urgent":
-        await this.post({
+      case "urgent": {
+        // Both channels are attempted independently; the alert counts as delivered if either
+        // reached apprise, but a partial failure is still surfaced in the detail.
+        const call = await this.post({
           title: message.title,
           body: buildTwiml(message),
           type: "failure",
           tag: "call",
           format: "text",
         });
-        await this.post({
+        const text = await this.post({
           title: message.title,
           body: buildPlainBody(message, MAX_SMS_LENGTH),
           type: "warning",
           tag: "sms, email",
           format: "text",
         });
-        return;
+        return combineResults([call, text]);
+      }
       case "warning":
-        await this.post({
+        return this.post({
           title: message.title,
           body: buildPlainBody(message),
           type: "warning",
           tag: "email",
           format: "text",
         });
-        return;
       case "info":
         // Suppressed: informational alerts have no channel today (future digest candidate).
-        return;
+        return { delivered: true };
     }
   }
 
@@ -126,8 +130,9 @@ export class AppriseNotifier implements Notifier {
    * POST a single notification payload to apprise-api, logging loudly instead of throwing.
    *
    * @param payload - The apprise request body.
+   * @returns Whether apprise accepted the request.
    */
-  private async post(payload: ApprisePayload): Promise<void> {
+  private async post(payload: ApprisePayload): Promise<NotifyResult> {
     const url = `${this.baseUrl}/notify/${this.key}`;
     let response: Response;
     try {
@@ -138,13 +143,29 @@ export class AppriseNotifier implements Notifier {
       });
     } catch (err) {
       this.logger(`apprise notify request failed (tag="${payload.tag}")`, err);
-      return;
+      return { delivered: false, detail: `${payload.tag}: request failed` };
     }
     if (!response.ok) {
       const detail = await safeReadText(response);
       this.logger(`apprise notify returned ${response.status} (tag="${payload.tag}")`, detail);
+      return { delivered: false, detail: `${payload.tag}: HTTP ${response.status}` };
     }
+    return { delivered: true };
   }
+}
+
+/**
+ * Combine per-channel results into one: delivered if any channel landed, with the failed channels'
+ * details joined so a partial failure is still visible.
+ *
+ * @param results - Per-channel delivery results.
+ * @returns The combined result.
+ */
+function combineResults(results: NotifyResult[]): NotifyResult {
+  const delivered = results.some((r) => r.delivered);
+  const failures = results.filter((r) => !r.delivered).map((r) => r.detail);
+  const detail = failures.length > 0 ? failures.join("; ") : undefined;
+  return detail ? { delivered, detail } : { delivered };
 }
 
 /** Default logger: writes loudly to stderr via `console.error`. */

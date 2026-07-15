@@ -35,16 +35,23 @@ export default tseslint.config(
   {
     files: ["packages/**/*.ts", "apps/**/*.ts", "tools/**/*.ts"],
     plugins: { jsdoc, tsdoc },
+    // Type-aware linting is enabled so `no-floating-promises` can run — an unhandled promise in
+    // the scheduler/scan paths is exactly the crash-safety class this guards against.
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
     rules: {
       "tsdoc/syntax": "warn",
       "jsdoc/require-jsdoc": ["warn", { publicOnly: true, enableFixer: false, contexts: exportContexts }],
       "jsdoc/require-description": ["warn", { contexts: exportContexts }],
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-floating-promises": "error",
     },
   },
   {
-    // Tests carry no export-doc burden.
-    files: ["**/*.{test,spec}.ts", "**/fixtures/**", "**/fakes/**"],
+    // Test files carry no export-doc burden. Fakes and fixtures are NOT exempted: they are the
+    // public API of `@bookr/testkit` and `@bookr/fixtures`, so their exports must be documented.
+    files: ["**/*.{test,spec}.ts"],
     rules: { "jsdoc/require-jsdoc": "off" },
   },
 );

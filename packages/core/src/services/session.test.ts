@@ -115,4 +115,31 @@ describe("ensureLiveSession", () => {
     expect(repo.sessions.get("resy")?.state).toBe("challenged");
     expect(repo.activity.recent({ type: "auth-challenged" })).toHaveLength(1);
   });
+
+  it("pauses the provider when an auth step throws a challenge (not just returns one)", async () => {
+    const provider = new FakeProvider();
+    let authCalls = 0;
+    provider.authenticate = async (): Promise<Session> => {
+      authCalls += 1;
+      throw new ProviderError("challenged", "captcha");
+    };
+    const { ctx, repo, notifier } = makeCtx(provider);
+    await expect(ensureLiveSession(ctx, provider)).rejects.toMatchObject({ errorClass: "challenged" });
+    // The thrown challenge must persist the paused state so the next pass short-circuits.
+    expect(repo.sessions.get("resy")?.state).toBe("challenged");
+    expect(notifier.bySeverity("warning")).toHaveLength(1);
+    // A second call does not touch the provider again — no login storm / ban path.
+    await expect(ensureLiveSession(ctx, provider)).rejects.toMatchObject({ errorClass: "challenged" });
+    expect(authCalls).toBe(1);
+  });
+
+  it("treats a missing session as a standing challenge when the provider cannot auth headlessly", async () => {
+    const provider = new FakeProvider({ capabilities: { headlessAuth: false } });
+    const { ctx, repo, notifier } = makeCtx(provider);
+    await expect(ensureLiveSession(ctx, provider)).rejects.toMatchObject({ errorClass: "challenged" });
+    // It never attempts a headless login it cannot complete; it asks the operator to hand one over.
+    expect(provider.calls.authenticate).toBe(0);
+    expect(repo.sessions.get("resy")?.state).toBe("challenged");
+    expect(notifier.bySeverity("warning")).toHaveLength(1);
+  });
 });

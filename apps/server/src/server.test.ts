@@ -53,6 +53,12 @@ describe("health", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, schedulerRunning: false });
   });
+
+  it("does not leak per-provider session state to unauthenticated callers", async () => {
+    const res = await request(makeServer()).get("/api/health");
+    // Provider session state/expiry is sensitive; it belongs behind the session guard only.
+    expect(res.body.providers).toBeUndefined();
+  });
 });
 
 describe("hardening", () => {
@@ -137,6 +143,14 @@ describe("ingest bearer guard", () => {
   it("rejects a missing token", async () => {
     const res = await request(makeServer()).post(path).send({ session: {} });
     expect(res.status).toBe(401);
+  });
+
+  it("rejects an empty session body even with a valid token", async () => {
+    const res = await request(makeServer())
+      .post(path)
+      .set("Authorization", `Bearer ${BASE_CONFIG.ingestToken}`)
+      .send({ session: {} });
+    expect(res.status).toBe(400);
   });
 
   it("rejects a wrong token of equal length", async () => {

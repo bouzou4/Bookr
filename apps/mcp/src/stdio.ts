@@ -17,7 +17,7 @@ import { getApp } from "./bootstrap.ts";
  * @returns A promise that resolves once the server is connected.
  */
 export async function runStdio(): Promise<void> {
-  const server = createMcpServer(getApp());
+  const server = createMcpServer(await getApp());
   await server.connect(new StdioServerTransport());
 }
 

@@ -145,6 +145,29 @@ describe("seen.sweep — boundary behaviour", () => {
     expect(repo.seen.get(key)).toBeDefined();
   });
 
+  it("markAbsent stamps only entries not seen since the cutoff and never re-stamps", () => {
+    const stale = "resy:v1:2030-06-01:19:00:00:2:cfg";
+    const fresh = "resy:v2:2030-06-01:19:00:00:2:cfg";
+    const already = "resy:v3:2030-06-01:19:00:00:2:cfg";
+    const passStart = "2026-07-02T00:00:00.000Z";
+    const disappearedAt = "2026-07-02T00:01:00.000Z";
+
+    repo.seen.upsert({ key: stale, firstSeenAt: "2026-07-01T00:00:00.000Z", lastSeenAt: "2026-07-01T00:00:00.000Z" });
+    repo.seen.upsert({ key: fresh, firstSeenAt: passStart, lastSeenAt: "2026-07-02T00:00:30.000Z" });
+    repo.seen.upsert({
+      key: already,
+      firstSeenAt: "2026-07-01T00:00:00.000Z",
+      lastSeenAt: "2026-07-01T00:00:00.000Z",
+      disappearedAt: "2026-06-30T00:00:00.000Z",
+    });
+
+    repo.seen.markAbsent(passStart, disappearedAt);
+
+    expect(repo.seen.get(stale)?.disappearedAt).toBe(disappearedAt); // absent this pass → stamped
+    expect(repo.seen.get(fresh)?.disappearedAt).toBeUndefined(); // observed this pass → untouched
+    expect(repo.seen.get(already)?.disappearedAt).toBe("2026-06-30T00:00:00.000Z"); // already absent → not re-stamped
+  });
+
   it("tolerates a malformed dedupe key by falling back to the age rule only", () => {
     const now = new Date("2026-07-13T00:00:00.000Z");
     const recent = now.toISOString();

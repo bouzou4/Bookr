@@ -1,8 +1,12 @@
 /**
  * The polling scheduler. It drives scan passes on a jittered cadence derived from the injected
- * {@link Clock}, enforces single-flight (a slow pass never overlaps the next tick), keeps
- * per-provider/venue backoff so a struggling venue slows without dragging the others, and pauses a
- * provider that repeatedly hits login challenges — warning once — until a session is handed over.
+ * {@link Clock}, enforces single-flight (a slow pass never overlaps the next tick), and keeps
+ * per-provider/venue backoff. Because a pass scans every enabled venue together, the cadence
+ * follows the most-backed-off active venue; a venue paused by repeated login challenges is skipped
+ * cheaply and does not stretch the cadence, and backoff state for a venue that is removed or
+ * disabled is dropped so it cannot pin the interval. A repeatedly-challenged provider is warned
+ * once and left paused until a fresh session is handed over. An unexpected fault in a pass is
+ * logged and the loop continues rather than dying.
  *
  * @packageDocumentation
  */
@@ -40,6 +44,8 @@ export interface SchedulerDeps {
   rng?: () => number;
   /** Backoff limits; defaults to {@link DEFAULT_BACKOFF_CONFIG}. */
   backoffConfig?: BackoffConfig;
+  /** Sink for an unexpected pass fault the loop recovers from; defaults to `console.error`. */
+  logger?: (message: string, detail?: unknown) => void;
 }
 
 /**
@@ -54,6 +60,7 @@ export class Scheduler {
   private readonly clock: Clock;
   private readonly rng: () => number;
   private readonly backoffConfig: BackoffConfig;
+  private readonly logger: (message: string, detail?: unknown) => void;
   private readonly baseMs: number;
   private readonly jitterPct: number;
 
@@ -73,6 +80,7 @@ export class Scheduler {
     this.clock = deps.clock;
     this.rng = deps.rng ?? Math.random;
     this.backoffConfig = deps.backoffConfig ?? DEFAULT_BACKOFF_CONFIG;
+    this.logger = deps.logger ?? ((message, detail) => console.error(`[scheduler] ${message}`, detail ?? ""));
     this.baseMs = deps.config.pollIntervalSeconds * 1000;
     this.jitterPct = deps.config.pollJitterPct;
   }
@@ -141,8 +149,13 @@ export class Scheduler {
   }
 
   private async updateBackoff(report: Awaited<ReturnType<ScanService["runOnce"]>>): Promise<void> {
+    const enabled = new Set(this.enabledVenueKeys());
+    // Drop backoff/pause state for venues no longer enabled so a removed venue cannot pin cadence.
+    for (const key of [...this.backoffStates.keys()]) if (!enabled.has(key)) this.backoffStates.delete(key);
+    for (const key of [...this.pausedNotified]) if (!enabled.has(key)) this.pausedNotified.delete(key);
+
     const outcomeByVenue = new Map<string, PassOutcome>();
-    for (const key of this.enabledVenueKeys()) outcomeByVenue.set(key, "success");
+    for (const key of enabled) outcomeByVenue.set(key, "success");
 
     for (const error of report.errors) {
       const watch = this.repository.watches.get(error.watchId);
@@ -171,6 +184,8 @@ export class Scheduler {
   private nextSleepMs(): number {
     let delay = this.baseMs;
     for (const state of this.backoffStates.values()) {
+      // A paused provider is skipped cheaply each pass; it must not stretch the cadence for others.
+      if (state.paused) continue;
       delay = Math.max(delay, backoffDelayMs(state, this.baseMs));
     }
     return jitter(delay, this.jitterPct, this.rng);
@@ -178,7 +193,13 @@ export class Scheduler {
 
   private async loop(): Promise<void> {
     while (this.isRunning) {
-      await this.pass();
+      try {
+        await this.pass();
+      } catch (err) {
+        // A pass is expected to swallow per-watch errors; this guards the loop against an
+        // unexpected fault (e.g. a persistence error) so a transient failure can't kill scanning.
+        this.logger("scan pass failed; continuing", err);
+      }
       if (!this.isRunning) break;
       await this.clock.sleep(this.nextSleepMs());
     }

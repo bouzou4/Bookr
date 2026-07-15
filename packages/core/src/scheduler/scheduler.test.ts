@@ -22,7 +22,7 @@ function baseDeps(scan: ScanService, over: Partial<SchedulerDeps> = {}): Schedul
     notifier: new FakeNotifier(),
     clock,
     config: loadConfig({}),
-    rng: () => 0.5, // centred jitter → delay equals base
+    rng: () => 0, // jitter floor → delay equals base
     ...over,
   };
 }
@@ -124,7 +124,7 @@ describe("Scheduler", () => {
     holder.sched = sched;
     sched.start();
     await sched.drain();
-    // After the first errored pass the venue multiplier is 2 → next sleep = 120s (rng centred).
+    // After the first errored pass the venue multiplier is 2 → next sleep = 120s (jitter at floor).
     expect(clock.sleeps).toEqual([120_000]);
   });
 });

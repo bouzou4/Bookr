@@ -100,7 +100,7 @@ describe("buildApp", () => {
     status = await app.credentials.status();
     expect(status[0]?.sessionState).toBe("active");
     expect(status[0]?.needsAttention).toBe(false);
-    expect(app.activity.recent({ type: "auth-challenged" })).toHaveLength(1);
+    expect(app.activity.recent({ type: "session-ingested" })).toHaveLength(1);
   });
 
   it("reports health reflecting sessions and scheduler state", async () => {

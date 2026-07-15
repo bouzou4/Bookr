@@ -15,7 +15,8 @@ import { loadConfig } from "@bookr/shared";
  *
  * @returns The wired application surface.
  */
-export function getApp(): BookrApp {
+export async function getApp(): Promise<BookrApp> {
   const config = loadConfig(process.env);
-  return createBookr({ config, env: process.env });
+  const { app } = await createBookr({ config, env: process.env });
+  return app;
 }

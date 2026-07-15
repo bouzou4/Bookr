@@ -80,6 +80,17 @@ export interface SeenRepository {
    * @param now - Current ISO timestamp used as the sweep reference.
    */
   sweep(now: string): void;
+  /**
+   * Mark every still-present entry not observed since a cutoff as disappeared, so a later
+   * reappearance re-alerts. An entry counts as observed when its `lastSeenAt` is at or after the
+   * cutoff; this is durable across restarts because it reads persisted timestamps rather than an
+   * in-memory record of the previous pass.
+   *
+   * @param seenBefore - ISO cutoff (a pass's start time); entries last seen strictly before it,
+   *   and not already disappeared, are marked.
+   * @param disappearedAt - ISO time to stamp on the newly-absent entries.
+   */
+  markAbsent(seenBefore: string, disappearedAt: string): void;
 }
 
 /** Query options for the activity log. */

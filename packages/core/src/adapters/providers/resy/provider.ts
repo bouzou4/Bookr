@@ -423,10 +423,11 @@ export class ResyProvider implements BookingProvider {
 
   private isExclusive(
     slot: { is_global_dining_access?: boolean },
-    config: { type?: string; is_global_dining_access?: boolean },
+    config: { is_global_dining_access?: boolean },
   ): boolean {
-    if (slot.is_global_dining_access === true || config.is_global_dining_access === true) return true;
-    return typeof config.type === "string" && /global dining|gda/i.test(config.type);
+    // Rely only on Resy's authoritative boolean marker. Matching the human-readable seating-type
+    // name is not a reliable Global Dining Access signal and risks false positives.
+    return slot.is_global_dining_access === true || config.is_global_dining_access === true;
   }
 
   private preferredPaymentMethod(data: ResySessionData, fromDetails?: ResyPaymentMethod[]): number | undefined {
@@ -447,6 +448,11 @@ export class ResyProvider implements BookingProvider {
     if (res.ok) {
       const body = safeJson(text) as { reservation_id?: number | string; resy_token?: string };
       const confirmationId = body.reservation_id != null ? String(body.reservation_id) : (body.resy_token ?? "");
+      if (confirmationId.length === 0) {
+        // A 2xx with neither a reservation id nor a token: the reservation cannot be confirmed or
+        // later cancelled, so surface it as unconfirmed rather than reporting a false success.
+        return { status: "locked-unconfirmed", deepLink, detail: "Resy accepted the request but returned no confirmation id" };
+      }
       return { status: "booked", confirmationId, deepLink, cancelRef: body.resy_token };
     }
     if (res.status === 419) {

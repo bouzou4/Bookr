@@ -37,7 +37,7 @@ export function createCredentialService(ctx: ServiceContext): {
       ctx.repository.sessions.put(session);
       ctx.repository.activity.record({
         at,
-        type: "auth-challenged",
+        type: "session-ingested",
         provider,
         detail: `session handed over for ${provider}; scanning resumed`,
       });

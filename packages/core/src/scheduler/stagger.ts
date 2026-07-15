@@ -1,8 +1,6 @@
 /**
- * Stagger planning: spreading multiple watches' passes across the base interval so same-venue
- * requests never fire simultaneously and a whole account's traffic doesn't arrive in one burst.
- * Watches sharing a venue collapse to a single group (a pass already handles a venue's watches
- * sequentially); groups are then evenly distributed across the interval.
+ * Venue-key helpers for the scheduler: collapsing a watch list to the distinct provider/venue
+ * identities a pass backs off and sizes its cadence against.
  *
  * @packageDocumentation
  */
@@ -34,21 +32,4 @@ export function distinctVenueKeys(venues: VenueKey[]): string[] {
     }
   }
   return keys;
-}
-
-/**
- * Distribute distinct venues evenly across the base interval, returning each venue's start offset
- * in milliseconds. With three venues over a 60 s interval, offsets are `0`, `20000`, `40000`.
- *
- * @param venues - Provider/venue pairs to stagger.
- * @param baseMs - The base interval in milliseconds.
- * @returns A map from `"provider:venueId"` to its offset in milliseconds.
- */
-export function planStagger(venues: VenueKey[], baseMs: number): Map<string, number> {
-  const keys = distinctVenueKeys(venues);
-  const offsets = new Map<string, number>();
-  if (keys.length === 0) return offsets;
-  const step = baseMs / keys.length;
-  keys.forEach((key, index) => offsets.set(key, Math.round(step * index)));
-  return offsets;
 }

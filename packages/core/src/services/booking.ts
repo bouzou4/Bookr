@@ -44,13 +44,24 @@ export async function attemptBook(
 ): Promise<BookResult> {
   const result = await provider.book(slot, session);
   const booked = result.status === "booked";
+  // On success, persist the provider's booking handles alongside the event. They are the only
+  // record of how to cancel this reservation later; dropping them would strand the cancel path.
+  const data = booked
+    ? {
+        dedupeKey: slot.dedupeKey,
+        status: result.status,
+        confirmationId: result.confirmationId,
+        cancelRef: result.cancelRef,
+        deepLink: result.deepLink,
+      }
+    : { dedupeKey: slot.dedupeKey, status: result.status };
   ctx.repository.activity.record({
     at: ctx.clock.now().toISOString(),
     type: booked ? "booked" : "book-failed",
     provider: provider.name,
     watchId: watch.id,
     detail: booked ? `booked ${slot.date} ${slot.start}` : `${result.status}: ${"detail" in result ? result.detail : ""}`,
-    data: { dedupeKey: slot.dedupeKey, status: result.status },
+    data,
   });
   return result;
 }

@@ -24,8 +24,8 @@ describe("HealthPage", () => {
     render(<HealthPage />);
     expect(await screen.findByText("Needs attention")).toBeTruthy();
     expect(screen.getByText("stopped")).toBeTruthy();
-    expect(await screen.findByText("challenged")).toBeTruthy();
-    expect(screen.getByText("challenged").className).toContain("needs-attention");
+    const badge = await screen.findByText("challenged");
+    expect(badge.getAttribute("data-needs-attention")).toBe("true");
   });
 
   it("shows a load error", async () => {

@@ -1,4 +1,6 @@
-# Bookr
+<p align="center">
+  <img src="docs/media/bookr-banner.svg" alt="Bookr" width="460">
+</p>
 
 A pluggable reservation scanner. It watches a booking provider for newly-freed
 inventory — a cancelled table, seats opening up in a sold-out screening — within
@@ -28,6 +30,20 @@ is provider-agnostic so more (e.g. SoHo House) drop in as one module.
 - **Stack:** TypeScript · Express (API + scheduler) · React + Vite (dashboard) ·
   SQLite (better-sqlite3) · pnpm workspaces. Notifications via
   [apprise](https://github.com/caronc/apprise).
+
+## Dashboard
+
+A React + Vite control room for your watches — light/dark aware (follows your OS), mobile-ready,
+and built on a seat-aware design system. Draw the exact seats you'll accept on a live auditorium
+map (remembered per theater), and read a timeline of every scan, notification, and booking attempt.
+
+<p align="center">
+  <img src="docs/media/dashboard-seatmap.png" alt="Seat-map picker — draw acceptable seats on a live auditorium map, with open-now vs booked-this-showtime seats called out" width="860">
+</p>
+
+<p align="center">
+  <img src="docs/media/dashboard-activity.png" alt="Activity timeline of scans, notifications, and booking attempts" width="860">
+</p>
 
 ## Layout
 

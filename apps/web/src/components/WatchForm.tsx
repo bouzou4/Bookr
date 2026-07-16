@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Bookmark, BookmarkCheck, Loader2, MapPin, Search, Zap } from "lucide-react";
 import {
   type ProviderName,
   type ResourceType,
@@ -11,6 +12,10 @@ import {
   watchInputSchema,
 } from "@bookr/shared";
 import { api } from "../api/client.ts";
+import { cn } from "../lib/utils.ts";
+import { Button } from "./ui/button.tsx";
+import { Input } from "./ui/input.tsx";
+import { Label } from "./ui/label.tsx";
 import { SeatMapPicker } from "./SeatMapPicker.tsx";
 
 const PROVIDERS: ProviderName[] = ["resy", "sohohouse", "opentable", "amc"];
@@ -26,6 +31,27 @@ const PROVIDER_RESOURCE_TYPES: Record<ProviderName, ResourceType[]> = {
   sohohouse: ["table", "bedroom"],
   amc: ["screening"],
 };
+
+/** Shared visual treatment for native `<input>`/`<select>` controls, matching the `Input` primitive. */
+const controlClass =
+  "border-input bg-transparent flex h-9 w-full min-w-0 rounded-md border px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-destructive/20 aria-invalid:border-destructive";
+
+/** A small uppercase section label used to introduce a group of related fields. */
+function SectionLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return <span className="text-primary text-xs font-medium tracking-[0.2em] uppercase">{children}</span>;
+}
+
+/** Destructive-toned message rendered under an invalid field, matched by tests via `.field-error`. */
+function FieldError({ children }: { children?: string }): React.JSX.Element | null {
+  if (!children) return null;
+  return <p className="field-error text-destructive mt-1 text-xs">{children}</p>;
+}
+
+/** Muted status line (loading/empty states) for async lookups. */
+function FieldHint({ children }: { children?: string | null }): React.JSX.Element | null {
+  if (!children) return null;
+  return <p className="text-muted-foreground mt-1 text-xs">{children}</p>;
+}
 
 /** Editable form fields, kept as strings/booleans so every input can stay controlled. */
 interface FormState {
@@ -130,6 +156,10 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
   const [screenings, setScreenings] = useState<Screening[] | null>(null);
   const [screeningsStatus, setScreeningsStatus] = useState<string | null>(null);
   const [activeShowtime, setActiveShowtime] = useState<string | null>(null);
+  // Per-showtime auditorium metadata: its layout signature and whether this theatre already has a
+  // saved acceptable-seat set for that auditorium. Populated lazily so the showtime list can flag
+  // which auditoriums still need seats drawn.
+  const [seatMeta, setSeatMeta] = useState<Record<string, { signature: string; hasPrefs: boolean }>>({});
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]): void {
     setState((s) => ({ ...s, [key]: value }));
@@ -166,6 +196,14 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
     // Run once on mount for the edited watch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When a film is chosen, probe its showtimes' auditoriums so each can flag whether this theatre
+  // already has saved seats there (seats are cached per auditorium, not per showtime).
+  useEffect(() => {
+    if (!state.filmId || !screenings) return;
+    void prefetchSeatMeta(screenings.filter((s) => s.filmId === state.filmId).map((s) => s.ref));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.filmId, screenings]);
 
   /** Resolve the free-text venue query against the selected provider and show the matches. */
   async function searchVenues(): Promise<void> {
@@ -233,12 +271,31 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
       const view = await api.seating.map(state.provider, ref);
       setSeatView(view);
       setSeatMapStatus(null);
-      if (state.selectedSeats.length === 0) {
-        const cached = await api.seating.getPrefs(state.provider, state.venueId, view.signature);
-        if (cached) set("selectedSeats", cached.seats);
-      }
+      const cached = await api.seating.getPrefs(state.provider, state.venueId, view.signature);
+      setSeatMeta((m) => ({ ...m, [ref]: { signature: view.signature, hasPrefs: cached != null } }));
+      if (cached && state.selectedSeats.length === 0) set("selectedSeats", cached.seats);
     } catch (err) {
       setSeatMapStatus(err instanceof Error ? err.message : "seat map fetch failed");
+    }
+  }
+
+  /** Probe each showtime's auditorium (layout signature) and whether it already has saved seats. */
+  async function prefetchSeatMeta(refs: string[]): Promise<void> {
+    const prefsBySignature = new Map<string, boolean>();
+    for (const ref of refs) {
+      if (seatMeta[ref]) continue;
+      try {
+        const view = await api.seating.map(state.provider, ref);
+        let hasPrefs = prefsBySignature.get(view.signature);
+        if (hasPrefs === undefined) {
+          hasPrefs = (await api.seating.getPrefs(state.provider, state.venueId, view.signature)) != null;
+          prefsBySignature.set(view.signature, hasPrefs);
+        }
+        const resolved = hasPrefs;
+        setSeatMeta((m) => ({ ...m, [ref]: { signature: view.signature, hasPrefs: resolved } }));
+      } catch {
+        // Best-effort: a failed probe just leaves that showtime unbadged.
+      }
     }
   }
 
@@ -279,239 +336,366 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
   }
 
   return (
-    <form className="watch-form" onSubmit={handleSubmit} aria-label={initial ? "Edit watch" : "Create watch"}>
-      <label htmlFor="provider">Provider</label>
-      <select id="provider" value={state.provider} onChange={(e) => changeProvider(e.target.value as ProviderName)}>
-        {PROVIDERS.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
-        ))}
-      </select>
-
-      <label htmlFor="label">Label</label>
-      <input id="label" value={state.label} onChange={(e) => set("label", e.target.value)} />
-      {errors.label && <span className="field-error">{errors.label}</span>}
-
-      <label htmlFor="venueQuery">Venue</label>
-      <div className="venue-search">
-        <input
-          id="venueQuery"
-          placeholder="search by name or city, e.g. 34th street"
-          value={venueQuery}
-          onChange={(e) => setVenueQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void searchVenues();
-            }
-          }}
-        />
-        <button type="button" onClick={() => void searchVenues()} disabled={!venueQuery.trim()}>
-          Search
-        </button>
+    <form className="space-y-6" onSubmit={handleSubmit} aria-label={initial ? "Edit watch" : "Create watch"}>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="provider">Provider</Label>
+          <select
+            id="provider"
+            className={cn(controlClass, "mt-1.5 cursor-pointer")}
+            value={state.provider}
+            onChange={(e) => changeProvider(e.target.value as ProviderName)}
+          >
+            {PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label htmlFor="resourceType">Resource type</Label>
+          <select
+            id="resourceType"
+            className={cn(controlClass, "mt-1.5 cursor-pointer")}
+            value={state.resourceType}
+            onChange={(e) => set("resourceType", e.target.value as ResourceType)}
+            disabled={PROVIDER_RESOURCE_TYPES[state.provider].length === 1}
+          >
+            {PROVIDER_RESOURCE_TYPES[state.provider].map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
-      {venueStatus && <span className="field-error">{venueStatus}</span>}
-      {venueMatches && venueMatches.length > 0 && (
-        <ul className="venue-results">
-          {venueMatches.map((m) => (
-            <li key={m.id}>
-              <button type="button" onClick={() => pickVenue(m)}>
-                {m.name}
-                {m.city ? ` — ${m.city}` : ""}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {state.venueId && (
-        <p className="venue-selected">
-          Selected: <strong>{state.venueLabel || state.venueId}</strong> <code>{state.venueId}</code>
-        </p>
-      )}
-      {errors["venue.id"] && <span className="field-error">{errors["venue.id"]}</span>}
 
-      <label htmlFor="resourceType">Resource type</label>
-      <select
-        id="resourceType"
-        value={state.resourceType}
-        onChange={(e) => set("resourceType", e.target.value as ResourceType)}
-        disabled={PROVIDER_RESOURCE_TYPES[state.provider].length === 1}
-      >
-        {PROVIDER_RESOURCE_TYPES[state.provider].map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-      </select>
+      <div>
+        <Label htmlFor="label">Label</Label>
+        <Input
+          id="label"
+          className="mt-1.5"
+          placeholder="e.g. Carbone Friday"
+          value={state.label}
+          onChange={(e) => set("label", e.target.value)}
+        />
+        <FieldError>{errors.label}</FieldError>
+      </div>
+
+      <div>
+        <Label htmlFor="venueQuery">Venue</Label>
+        <div className="mt-1.5 flex gap-2">
+          <Input
+            id="venueQuery"
+            placeholder="search by name or city, e.g. 34th street"
+            value={venueQuery}
+            onChange={(e) => setVenueQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void searchVenues();
+              }
+            }}
+          />
+          <Button type="button" variant="secondary" onClick={() => void searchVenues()} disabled={!venueQuery.trim()}>
+            <Search />
+            Search
+          </Button>
+        </div>
+        <FieldHint>{venueStatus}</FieldHint>
+        {venueMatches && venueMatches.length > 0 && (
+          <ul className="border-input bg-popover mt-2 max-h-48 space-y-1 overflow-y-auto rounded-md border p-1.5">
+            {venueMatches.map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => pickVenue(m)}
+                  className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors"
+                >
+                  <MapPin className="text-muted-foreground size-3.5 shrink-0" />
+                  <span className="truncate">
+                    {m.name}
+                    {m.city ? ` — ${m.city}` : ""}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {state.venueId && (
+          <p className="text-muted-foreground mt-2 text-sm">
+            Selected: <strong className="text-foreground">{state.venueLabel || state.venueId}</strong>{" "}
+            <code className="tnum bg-muted rounded px-1 py-0.5 text-xs">{state.venueId}</code>
+          </p>
+        )}
+        <FieldError>{errors["venue.id"]}</FieldError>
+      </div>
 
       {state.resourceType === "screening" && (
-        <fieldset disabled={!state.venueId}>
-          <legend>Screening</legend>
-          {!state.venueId && <p className="seatmap-hint">Pick a theatre above to see what&apos;s playing.</p>}
+        <fieldset disabled={!state.venueId} className="border-border/70 rounded-lg border p-4 disabled:opacity-60">
+          <legend className="px-1">
+            <SectionLabel>Screening</SectionLabel>
+          </legend>
+          {!state.venueId && (
+            <p className="text-muted-foreground text-sm">Pick a theatre above to see what&apos;s playing.</p>
+          )}
 
-          <label htmlFor="browseDate">Showtimes for</label>
-          <input
-            id="browseDate"
-            type="date"
-            value={state.browseDate}
-            onChange={(e) => changeBrowseDate(e.target.value)}
-          />
-          {screeningsStatus && <span className="field-error">{screeningsStatus}</span>}
+          <div className="max-w-xs">
+            <Label htmlFor="browseDate">Showtimes for</Label>
+            <Input
+              id="browseDate"
+              type="date"
+              className="tnum mt-1.5"
+              value={state.browseDate}
+              onChange={(e) => changeBrowseDate(e.target.value)}
+            />
+          </div>
+          <FieldHint>{screeningsStatus}</FieldHint>
 
           {screenings && screenings.length > 0 && (
             <>
-              <label htmlFor="film">Movie</label>
-              <select id="film" value={state.filmId} onChange={(e) => pickFilm(e.target.value)}>
-                <option value="">Select a movie…</option>
-                {[...new Map(screenings.map((s) => [s.filmId, s.title])).entries()].map(([id, title]) => (
-                  <option key={id} value={id}>
-                    {title}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-4">
+                <Label htmlFor="film">Movie</Label>
+                <select
+                  id="film"
+                  className={cn(controlClass, "mt-1.5 cursor-pointer")}
+                  value={state.filmId}
+                  onChange={(e) => pickFilm(e.target.value)}
+                >
+                  <option value="">Select a movie…</option>
+                  {[...new Map(screenings.map((s) => [s.filmId, s.title])).entries()].map(([id, title]) => (
+                    <option key={id} value={id}>
+                      {title}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {state.filmId && (
-                <>
-                  <span className="field-label">Showtime (pick one to draw your seats)</span>
-                  <div className="showtime-list">
+                <div className="mt-4">
+                  <p className="text-muted-foreground mb-2 text-sm">
+                    Pick a showtime to view its live seat map. Your seat picks are saved for this theatre&apos;s
+                    auditorium and reused across every showtime and movie here.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
                     {screenings
                       .filter((s) => s.filmId === state.filmId)
-                      .map((s) => (
-                        <button
-                          key={s.ref}
-                          type="button"
-                          className={`showtime${activeShowtime === s.ref ? " showtime-active" : ""}`}
-                          onClick={() => void loadShowtimeSeatMap(s.ref)}
-                        >
-                          {localTime(s.startUtc)}
-                          {s.format ? ` · ${s.format}` : ""}
-                          {s.status !== "Sellable" ? ` · ${s.status}` : ""}
-                        </button>
-                      ))}
+                      .map((s) => {
+                        const meta = seatMeta[s.ref];
+                        return (
+                          <Button
+                            key={s.ref}
+                            type="button"
+                            size="sm"
+                            variant={activeShowtime === s.ref ? "default" : "outline"}
+                            onClick={() => void loadShowtimeSeatMap(s.ref)}
+                          >
+                            <span className="tnum">
+                              {localTime(s.startUtc)}
+                              {s.format ? ` · ${s.format}` : ""}
+                              {s.status !== "Sellable" ? ` · ${s.status}` : ""}
+                            </span>
+                            {meta &&
+                              (meta.hasPrefs ? (
+                                <BookmarkCheck className="text-signal size-3.5" aria-label="saved seats for this auditorium" />
+                              ) : (
+                                <Bookmark
+                                  className="size-3.5 opacity-50"
+                                  aria-label="no saved seats for this auditorium yet"
+                                />
+                              ))}
+                          </Button>
+                        );
+                      })}
                   </div>
-                </>
+                  <p className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem]">
+                    <span className="flex items-center gap-1">
+                      <BookmarkCheck className="text-signal size-3" /> saved seats for this auditorium
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Bookmark className="size-3 opacity-50" /> none yet — pick it to draw some
+                    </span>
+                  </p>
+                </div>
               )}
             </>
           )}
 
-          {seatMapStatus && <span className="field-error">{seatMapStatus}</span>}
+          <FieldHint>{seatMapStatus}</FieldHint>
           {seatView && (
-            <SeatMapPicker
-              view={seatView}
-              selected={state.selectedSeats}
-              onChange={(seats) => set("selectedSeats", seats)}
-            />
+            <div className="mt-4">
+              <SeatMapPicker
+                view={seatView}
+                selected={state.selectedSeats}
+                onChange={(seats) => set("selectedSeats", seats)}
+              />
+            </div>
           )}
           {state.selectedSeats.length > 0 && (
-            <span className="seatmap-hint">
+            <p className="seatmap-hint tnum text-muted-foreground mt-3 text-xs">
               {state.selectedSeats.length} acceptable seats: {state.selectedSeats.join(", ")}
-            </span>
+            </p>
           )}
         </fieldset>
       )}
 
-      <label htmlFor="partySize">Party size</label>
-      <input
-        id="partySize"
-        type="number"
-        min={1}
-        max={20}
-        value={state.partySize}
-        onChange={(e) => set("partySize", e.target.value)}
-      />
-      {errors.partySize && <span className="field-error">{errors.partySize}</span>}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div>
+          <Label htmlFor="partySize">Party size</Label>
+          <Input
+            id="partySize"
+            type="number"
+            min={1}
+            max={20}
+            className="tnum mt-1.5"
+            value={state.partySize}
+            onChange={(e) => set("partySize", e.target.value)}
+          />
+          <FieldError>{errors.partySize}</FieldError>
+        </div>
+        <div>
+          <Label htmlFor="windowStart">Time window start</Label>
+          <Input
+            id="windowStart"
+            type="time"
+            className="tnum mt-1.5"
+            value={state.windowStart}
+            onChange={(e) => set("windowStart", e.target.value)}
+          />
+          <FieldError>{errors["timeWindow.start"]}</FieldError>
+        </div>
+        <div>
+          <Label htmlFor="windowEnd">Time window end</Label>
+          <Input
+            id="windowEnd"
+            type="time"
+            className="tnum mt-1.5"
+            value={state.windowEnd}
+            onChange={(e) => set("windowEnd", e.target.value)}
+          />
+          <FieldError>{errors["timeWindow.end"]}</FieldError>
+        </div>
+      </div>
 
-      <fieldset>
-        <legend>Date range</legend>
-        <label>
-          <input
-            type="radio"
-            name="dateMode"
-            checked={state.dateMode === "fixed"}
-            onChange={() => set("dateMode", "fixed")}
-          />
-          Fixed
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="dateMode"
-            checked={state.dateMode === "rolling"}
-            onChange={() => set("dateMode", "rolling")}
-          />
-          Rolling
-        </label>
+      <div>
+        <Label htmlFor="timezone">Timezone (IANA)</Label>
+        <Input
+          id="timezone"
+          className="tnum mt-1.5 max-w-xs"
+          value={state.timezone}
+          onChange={(e) => set("timezone", e.target.value)}
+        />
+        <FieldError>{errors.timezone}</FieldError>
+      </div>
+
+      <fieldset className="border-border/70 rounded-lg border p-4">
+        <legend className="px-1">
+          <SectionLabel>Date range</SectionLabel>
+        </legend>
+        <div className="flex gap-2">
+          <label
+            className={cn(
+              "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-foreground",
+              "border-input text-muted-foreground flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
+            )}
+          >
+            <input
+              type="radio"
+              name="dateMode"
+              className="accent-primary"
+              checked={state.dateMode === "fixed"}
+              onChange={() => set("dateMode", "fixed")}
+            />
+            Fixed
+          </label>
+          <label
+            className={cn(
+              "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-foreground",
+              "border-input text-muted-foreground flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
+            )}
+          >
+            <input
+              type="radio"
+              name="dateMode"
+              className="accent-primary"
+              checked={state.dateMode === "rolling"}
+              onChange={() => set("dateMode", "rolling")}
+            />
+            Rolling
+          </label>
+        </div>
         {state.dateMode === "fixed" ? (
-          <>
-            <label htmlFor="rangeStart">Start date</label>
-            <input
-              id="rangeStart"
-              type="date"
-              value={state.rangeStart}
-              onChange={(e) => set("rangeStart", e.target.value)}
-            />
-            <label htmlFor="rangeEnd">End date</label>
-            <input
-              id="rangeEnd"
-              type="date"
-              value={state.rangeEnd}
-              onChange={(e) => set("rangeEnd", e.target.value)}
-            />
-          </>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:max-w-sm">
+            <div>
+              <Label htmlFor="rangeStart">Start date</Label>
+              <Input
+                id="rangeStart"
+                type="date"
+                className="tnum mt-1.5"
+                value={state.rangeStart}
+                onChange={(e) => set("rangeStart", e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="rangeEnd">End date</Label>
+              <Input
+                id="rangeEnd"
+                type="date"
+                className="tnum mt-1.5"
+                value={state.rangeEnd}
+                onChange={(e) => set("rangeEnd", e.target.value)}
+              />
+            </div>
+          </div>
         ) : (
-          <>
-            <label htmlFor="rollingDays">Rolling days ahead</label>
-            <input
+          <div className="mt-4 max-w-[10rem]">
+            <Label htmlFor="rollingDays">Rolling days ahead</Label>
+            <Input
               id="rollingDays"
               type="number"
               min={1}
+              className="tnum mt-1.5"
               value={state.rollingDays}
               onChange={(e) => set("rollingDays", e.target.value)}
             />
-          </>
+          </div>
         )}
-        {errors.dateRange && <span className="field-error">{errors.dateRange}</span>}
+        <FieldError>{errors.dateRange}</FieldError>
       </fieldset>
 
-      <label htmlFor="windowStart">Time window start</label>
-      <input
-        id="windowStart"
-        type="time"
-        value={state.windowStart}
-        onChange={(e) => set("windowStart", e.target.value)}
-      />
-      <label htmlFor="windowEnd">Time window end</label>
-      <input
-        id="windowEnd"
-        type="time"
-        value={state.windowEnd}
-        onChange={(e) => set("windowEnd", e.target.value)}
-      />
-      {errors["timeWindow.start"] && <span className="field-error">{errors["timeWindow.start"]}</span>}
-      {errors["timeWindow.end"] && <span className="field-error">{errors["timeWindow.end"]}</span>}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label className="has-[:checked]:border-primary has-[:checked]:bg-primary/5 border-input flex flex-1 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors">
+          <input
+            type="checkbox"
+            className="accent-primary size-4 cursor-pointer"
+            checked={state.autobook}
+            onChange={(e) => set("autobook", e.target.checked)}
+          />
+          <span className="flex items-center gap-1.5 text-sm font-medium">
+            <Zap className="text-primary size-3.5" />
+            Autobook
+          </span>
+        </label>
+        <label className="has-[:checked]:border-primary has-[:checked]:bg-primary/5 border-input flex flex-1 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors">
+          <input
+            type="checkbox"
+            className="accent-primary size-4 cursor-pointer"
+            checked={state.enabled}
+            onChange={(e) => set("enabled", e.target.checked)}
+          />
+          <span className="text-sm font-medium">Enabled</span>
+        </label>
+      </div>
 
-      <label htmlFor="timezone">Timezone (IANA)</label>
-      <input id="timezone" value={state.timezone} onChange={(e) => set("timezone", e.target.value)} />
-      {errors.timezone && <span className="field-error">{errors.timezone}</span>}
-
-      <label>
-        <input type="checkbox" checked={state.autobook} onChange={(e) => set("autobook", e.target.checked)} />
-        Autobook
-      </label>
-
-      <label>
-        <input type="checkbox" checked={state.enabled} onChange={(e) => set("enabled", e.target.checked)} />
-        Enabled
-      </label>
-
-      <div className="form-actions">
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : "Save"}
-        </button>
-        <button type="button" onClick={onCancel} disabled={submitting}>
+      <div className="border-border/70 flex items-center justify-end gap-2 border-t pt-5">
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting}>
           Cancel
-        </button>
+        </Button>
+        <Button type="submit" disabled={submitting} className="gap-2">
+          {submitting && <Loader2 className="size-4 animate-spin" />}
+          {submitting ? "Saving…" : "Save"}
+        </Button>
       </div>
     </form>
   );

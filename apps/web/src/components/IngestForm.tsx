@@ -1,7 +1,13 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Loader2 } from "lucide-react";
 import type { ProviderName } from "@bookr/shared";
 import { ApiError, api } from "../api/client.ts";
+import { Button } from "./ui/button.tsx";
+import { Input } from "./ui/input.tsx";
+import { Label } from "./ui/label.tsx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx";
+import { Textarea } from "./ui/textarea.tsx";
 
 const PROVIDERS: ProviderName[] = ["resy", "sohohouse", "opentable"];
 
@@ -17,6 +23,9 @@ export interface IngestFormProps {
  * Hand a captured session over to the server for a provider. The ingest endpoint is bearer-token
  * authenticated (`INGEST_TOKEN`), independent of the dashboard's own login session, so this form
  * collects both the token and the raw session blob produced by the off-box login capture tool.
+ *
+ * Security-sensitive: this form only ever holds the token/blob in local component state to build
+ * the outgoing request. It must never log, report, or persist those values anywhere.
  */
 export function IngestForm({ provider, onIngested }: IngestFormProps): React.JSX.Element {
   const [selectedProvider, setSelectedProvider] = useState<ProviderName>(provider);
@@ -48,37 +57,53 @@ export function IngestForm({ provider, onIngested }: IngestFormProps): React.JSX
   }
 
   return (
-    <form className="ingest-form" onSubmit={handleSubmit} aria-label="Hand over session">
-      <label htmlFor="ingest-provider">Provider</label>
-      <select
-        id="ingest-provider"
-        value={selectedProvider}
-        onChange={(e) => setSelectedProvider(e.target.value as ProviderName)}
-      >
-        {PROVIDERS.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
-        ))}
-      </select>
+    <form onSubmit={handleSubmit} aria-label="Hand over session" className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="ingest-provider">Provider</Label>
+        <Select value={selectedProvider} onValueChange={(v) => setSelectedProvider(v as ProviderName)}>
+          <SelectTrigger id="ingest-provider" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PROVIDERS.map((p) => (
+              <SelectItem key={p} value={p}>
+                {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-      <label htmlFor="ingest-token">Ingest token</label>
-      <input id="ingest-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} />
+      <div className="space-y-2">
+        <Label htmlFor="ingest-token">Ingest token</Label>
+        <Input
+          id="ingest-token"
+          type="password"
+          autoComplete="off"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+        />
+      </div>
 
-      <label htmlFor="ingest-blob">Session blob (JSON)</label>
-      <textarea
-        id="ingest-blob"
-        value={blob}
-        rows={6}
-        onChange={(e) => setBlob(e.target.value)}
-        placeholder='{"token": "...", "refreshCookie": "..."}'
-      />
+      <div className="space-y-2">
+        <Label htmlFor="ingest-blob">Session blob (JSON)</Label>
+        <Textarea
+          id="ingest-blob"
+          value={blob}
+          rows={6}
+          onChange={(e) => setBlob(e.target.value)}
+          placeholder='{"token": "...", "refreshCookie": "..."}'
+          className="font-mono text-sm"
+        />
+      </div>
 
-      <button type="submit" disabled={submitting || token.length === 0 || blob.length === 0}>
+      <Button type="submit" disabled={submitting || token.length === 0 || blob.length === 0} className="gap-2">
+        {submitting && <Loader2 className="size-4 animate-spin" />}
         {submitting ? "Sending…" : "Hand over token"}
-      </button>
+      </Button>
+
       {error && (
-        <p role="alert" className="error">
+        <p role="alert" className="text-destructive text-sm">
           {error}
         </p>
       )}

@@ -26,7 +26,9 @@ describe("SeatMapPicker", () => {
     expect(screen.getAllByRole("button")).toHaveLength(5);
     expect(screen.getByTitle("A2 (occupied)")).toBeDefined();
     expect(screen.getByTitle("Wheelchair B3")).toBeDefined();
-    expect(screen.getByText("4/5 open (20% taken)")).toBeDefined();
+    // Occupancy is rendered by the shared OccupancyMeter: a percentage plus an open/total readout.
+    expect(screen.getByText("20%")).toBeDefined();
+    expect(screen.getByText("4/5 open")).toBeDefined();
   });
 
   it("toggles seats on click, including currently occupied ones", async () => {

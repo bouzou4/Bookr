@@ -62,16 +62,16 @@ describe("WatchesPage", () => {
   it("toggles enabled state", async () => {
     const user = userEvent.setup();
     render(<WatchesPage />);
-    const row = (await screen.findByText("Carbone Friday")).closest("tr");
+    const row = (await screen.findByText("Carbone Friday")).closest("[data-watch-row]");
     expect(row).toBeTruthy();
-    await user.click(within(row as HTMLElement).getByRole("button", { name: "Disable" }));
+    await user.click(within(row as HTMLElement).getByRole("switch"));
     expect(await screen.findByText("Carbone Friday")).toBeTruthy();
   });
 
   it("edits an existing watch", async () => {
     const user = userEvent.setup();
     render(<WatchesPage />);
-    const row = (await screen.findByText("Carbone Friday")).closest("tr");
+    const row = (await screen.findByText("Carbone Friday")).closest("[data-watch-row]");
     await user.click(within(row as HTMLElement).getByRole("button", { name: "Edit" }));
     expect(await screen.findByRole("heading", { name: "Edit Carbone Friday" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -82,7 +82,7 @@ describe("WatchesPage", () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<WatchesPage />);
-    const row = (await screen.findByText("Carbone Friday")).closest("tr");
+    const row = (await screen.findByText("Carbone Friday")).closest("[data-watch-row]");
     await user.click(within(row as HTMLElement).getByRole("button", { name: "Delete" }));
     expect(window.confirm).toHaveBeenCalled();
     vi.restoreAllMocks();
@@ -91,9 +91,9 @@ describe("WatchesPage", () => {
   it("surfaces a mutation error", async () => {
     const user = userEvent.setup();
     render(<WatchesPage />);
-    const row = (await screen.findByText("Carbone Friday")).closest("tr");
+    const row = (await screen.findByText("Carbone Friday")).closest("[data-watch-row]");
     server.use(http.put("/api/watches/:id", () => HttpResponse.json({ error: "locked" }, { status: 409 })));
-    await user.click(within(row as HTMLElement).getByRole("button", { name: "Disable" }));
+    await user.click(within(row as HTMLElement).getByRole("switch"));
     expect(await screen.findByRole("alert")).toBeTruthy();
   });
 });

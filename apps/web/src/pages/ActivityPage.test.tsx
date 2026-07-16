@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
@@ -6,12 +6,23 @@ import { server } from "../test/server.ts";
 import { ActivityPage } from "./ActivityPage.tsx";
 
 /**
- * `slot-found` is both an option value in the type filter <select> and the rendered event type
- * in the feed, so lookups for it must be scoped to the feed list to stay unambiguous.
+ * `slot-found` is both an option value in the type filter and the rendered event type in the
+ * feed, so lookups for it must be scoped to the feed list to stay unambiguous.
  */
 function feed(): HTMLElement {
   return document.querySelector(".activity-feed") as HTMLElement;
 }
+
+// jsdom implements neither pointer capture nor scrollIntoView; the Radix Select filter reaches
+// for both while opening/navigating its listbox. Provide inert shims so it works under test.
+beforeAll(() => {
+  Object.assign(window.HTMLElement.prototype, {
+    hasPointerCapture: () => false,
+    setPointerCapture: () => {},
+    releasePointerCapture: () => {},
+    scrollIntoView: () => {},
+  });
+});
 
 describe("ActivityPage", () => {
   it("renders recent events", async () => {
@@ -47,7 +58,8 @@ describe("ActivityPage", () => {
     );
     render(<ActivityPage />);
     await screen.findByText("No activity yet.");
-    await user.selectOptions(screen.getByLabelText("Type"), "booked");
+    await user.click(screen.getByLabelText("Type"));
+    await user.click(await screen.findByRole("option", { name: "booked" }));
     expect(await screen.findByText("Booked!")).toBeTruthy();
   });
 

@@ -19,8 +19,8 @@ describe("CredentialsPage", () => {
       ),
     );
     render(<CredentialsPage />);
-    const cell = await screen.findByText("challenged");
-    expect(cell.className).toContain("needs-attention");
+    const badge = await screen.findByText("challenged");
+    expect(badge.getAttribute("data-needs-attention")).toBe("true");
   });
 
   it("shows a load error", async () => {

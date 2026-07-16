@@ -51,6 +51,17 @@ export default tseslint.config(
     },
   },
   {
+    // Vendored shadcn/ui primitives (`src/components/ui`) are documented upstream and follow
+    // their own conventions; they are exempt from the workspace TSDoc-on-exports gate.
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "jsdoc/require-jsdoc": "off",
+      "jsdoc/require-description": "off",
+      "react/prop-types": "off",
+      "react/no-unknown-property": "off",
+    },
+  },
+  {
     // Test and test-support files carry no export-doc burden.
     files: ["src/**/*.{test,spec}.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
     rules: { "jsdoc/require-jsdoc": "off" },

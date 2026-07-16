@@ -33,7 +33,10 @@ describe("WatchesPage", () => {
 
     await user.click(screen.getByRole("button", { name: "New watch" }));
     await user.type(screen.getByLabelText("Label"), "Bar seats");
-    await user.type(screen.getByLabelText("Venue id"), "555");
+    // Venue is resolved by search now, not a raw id field.
+    await user.type(screen.getByLabelText("Venue"), "test");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.click(await screen.findByRole("button", { name: /Test Venue 42/ }));
     await user.clear(screen.getByLabelText("Timezone (IANA)"));
     await user.type(screen.getByLabelText("Timezone (IANA)"), "America/New_York");
 

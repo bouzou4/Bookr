@@ -8,6 +8,7 @@ import type {
   DropEvent,
   DropStats,
   ProviderName,
+  SeatPrefEntry,
   SeenEntry,
   Session,
   Watch,
@@ -38,6 +39,7 @@ export class FakeRepository implements Repository {
   private readonly seenMap = new Map<string, SeenEntry>();
   private activityLog: ActivityEvent[] = [];
   private readonly dropLog: DropEvent[] = [];
+  private readonly seatPrefMap = new Map<string, SeatPrefEntry>();
   private activityId = 0;
 
   /**
@@ -107,6 +109,15 @@ export class FakeRepository implements Repository {
     prune: (olderThanDays: number): void => {
       const cutoff = this.clock.now().getTime() - olderThanDays * DAY_MS;
       this.activityLog = this.activityLog.filter((e) => new Date(e.at).getTime() >= cutoff);
+    },
+  };
+
+  /** Per-theater acceptable-seat preference persistence. */
+  readonly seatPrefs = {
+    get: (provider: ProviderName, venueId: string, layoutKey: string): SeatPrefEntry | undefined =>
+      this.seatPrefMap.get(`${provider}:${venueId}:${layoutKey}`),
+    put: (entry: SeatPrefEntry): void => {
+      this.seatPrefMap.set(`${entry.provider}:${entry.venueId}:${entry.layoutKey}`, entry);
     },
   };
 

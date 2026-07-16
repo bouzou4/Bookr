@@ -95,6 +95,26 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    description: "watch item/tiers/seating columns; seat_prefs per-theater acceptable-seat cache",
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE watches ADD COLUMN item_json TEXT;
+        ALTER TABLE watches ADD COLUMN tiers_json TEXT;
+        ALTER TABLE watches ADD COLUMN seating_json TEXT;
+
+        CREATE TABLE seat_prefs (
+          provider TEXT NOT NULL,
+          venue_id TEXT NOT NULL,
+          layout_key TEXT NOT NULL,
+          seats TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (provider, venue_id, layout_key)
+        );
+      `);
+    },
+  },
 ];
 
 /**

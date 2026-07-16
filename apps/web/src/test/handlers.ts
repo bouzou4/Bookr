@@ -32,7 +32,9 @@ export const handlers = [
   http.post("/api/scan", () => HttpResponse.json(sampleScanReport)),
 
   http.post("/api/availability/check", () => HttpResponse.json([])),
-  http.post("/api/venues/resolve", () => HttpResponse.json([])),
+  http.post("/api/venues/resolve", () =>
+    HttpResponse.json([{ provider: "resy", id: "42", name: "Test Venue 42" }]),
+  ),
 
   http.get("/api/activity", () => HttpResponse.json([sampleActivityEvent])),
 

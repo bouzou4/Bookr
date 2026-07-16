@@ -9,9 +9,12 @@
  */
 
 import { formatDedupeKey } from "@bookr/shared";
-import type { ScanReport, Slot, Watch } from "@bookr/shared";
+import type { ResourceType, ScanReport, SeatingSummary, Slot, Watch } from "@bookr/shared";
 import { ProviderError } from "../errors.ts";
 import { createDropLogger, type DropLogger } from "../droplog/drop-logger.ts";
+import { passesSeatingGate, resolveAcceptableSeats } from "../seating/gate.ts";
+import { layoutSignature } from "../seating/signature.ts";
+import { summarizeSeatMap } from "../seating/summary.ts";
 import type { ServiceContext } from "./context.ts";
 import { attemptBook } from "./booking.ts";
 import { classify, ensureLiveSession, getProvider } from "./session.ts";
@@ -32,6 +35,29 @@ export interface ScanService {
    * @returns A summary of the pass.
    */
   runOnce(watchId?: string): Promise<ScanReport>;
+}
+
+/** Alert titles per inventory category — "Table available" reads wrong for a cinema. */
+const ALERT_TITLES: Record<ResourceType, string> = {
+  table: "Table available",
+  bedroom: "Room available",
+  screening: "Seats available",
+  event: "Tickets available",
+};
+
+/** Whether a slot's tier (`kind`) matches one of the watch's acceptable tiers. */
+function matchesTiers(tiers: string[] | undefined, kind: string | undefined): boolean {
+  if (!tiers?.length) return true;
+  if (!kind) return false;
+  const haystack = kind.toLowerCase();
+  return tiers.some((tier) => haystack.includes(tier.toLowerCase()));
+}
+
+/** A one-line description of the best open block, for alert copy. */
+function seatingLine(seating: SeatingSummary): string {
+  const best = seating.blocks[0];
+  const blockPart = best ? `; best: ${String(best.size)} adjacent, row ${best.row} (${best.position}, ${best.depth})` : "";
+  return ` — ${String(seating.percentTaken)}% full${blockPart}`;
 }
 
 function slotDedupeKey(watch: Watch, slot: Slot): string {
@@ -105,10 +131,32 @@ export function createScanService(ctx: ServiceContext): ScanService {
 
     const range = resolveDateRange(watch.dateRange, watch.timezone, ctx.clock.now());
     const matching = slots.filter(
-      (s) => isWithinDateRange(s.date, range) && isWithinWindow(s.start, watch.timeWindow),
+      (s) =>
+        isWithinDateRange(s.date, range) &&
+        isWithinWindow(s.start, watch.timeWindow) &&
+        matchesTiers(watch.tiers, s.kind),
     );
 
     for (const slot of matching) {
+      // The acceptable-seat gate. Adapters ship the full map and never gate themselves; policy
+      // lives here because resolving the cached per-theater preference needs the repository.
+      // A gated-out slot is not upserted to `seen`, so a sold-out (for *your* seats) showtime
+      // stays absent and re-alerts the moment an acceptable block frees up.
+      let seating = slot.seating;
+      if (slot.seatMap) {
+        const cached = ctx.repository.seatPrefs.get(
+          watch.provider,
+          watch.venue.id,
+          layoutSignature(slot.seatMap),
+        )?.seats;
+        const acceptable = resolveAcceptableSeats(watch.seating, slot.seatMap, cached);
+        seating = summarizeSeatMap(slot.seatMap, acceptable);
+        if (!passesSeatingGate(seating, watch.partySize)) continue;
+      }
+      // Downstream consumers (deep links, drop log, autobook) see the masked summary — the best
+      // block in the alert and the pre-selected seats in the link must be the user's seats.
+      const gated: Slot = seating === slot.seating ? slot : { ...slot, seating };
+
       const key = slotDedupeKey(watch, slot);
       const nowIso = ctx.clock.now().toISOString();
       const entry = ctx.repository.seen.get(key);
@@ -123,7 +171,7 @@ export function createScanService(ctx: ServiceContext): ScanService {
           lastSeenAt: nowIso,
           notifiedAt: nowIso,
         });
-        dropLogger.record({ ...slot, dedupeKey: key }, watch);
+        dropLogger.record({ ...gated, dedupeKey: key }, watch);
         ctx.repository.activity.record({
           at: nowIso,
           type: "slot-found",
@@ -133,9 +181,11 @@ export function createScanService(ctx: ServiceContext): ScanService {
           data: { dedupeKey: key },
         });
         const delivery = await ctx.notifier.notify("urgent", {
-          title: `Table available — ${watch.label}`,
-          body: `${watch.partySize} on ${slot.date} at ${slot.start}${slot.kind ? ` (${slot.kind})` : ""}`,
-          link: provider.bookingUrl(watch, slot),
+          title: `${ALERT_TITLES[slot.resourceType]} — ${watch.label}`,
+          body:
+            `${watch.partySize} on ${slot.date} at ${slot.start}` +
+            `${slot.kind ? ` (${slot.kind})` : ""}${seating ? seatingLine(seating) : ""}`,
+          link: provider.bookingUrl(watch, gated),
         });
         if (delivery.delivered) {
           report.notified += 1;
@@ -154,7 +204,7 @@ export function createScanService(ctx: ServiceContext): ScanService {
 
         if (watch.autobook && provider.capabilities.autobook) {
           try {
-            const result = await attemptBook(ctx, provider, watch, { ...slot, dedupeKey: key }, session);
+            const result = await attemptBook(ctx, provider, watch, { ...gated, dedupeKey: key }, session);
             if (result.status === "booked") report.booked += 1;
           } catch {
             // Booking failures never abort a pass; attemptBook and providers record the detail.

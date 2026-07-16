@@ -4,6 +4,8 @@ import type {
   ProviderCapabilities,
   ProviderCredentials,
   ProviderName,
+  Screening,
+  SeatMap,
   Session,
   Slot,
   VenueMatch,
@@ -91,4 +93,25 @@ export interface BookingProvider {
    * @returns The normalised error class.
    */
   classifyError(err: unknown): ErrorClass;
+
+  /**
+   * Fetch the full seating layout for one bookable item, for providers with assigned seating.
+   * Optional — callers presence-check it; providers without seat maps simply omit it.
+   *
+   * @param ref - The provider's reference for the item (e.g. an AMC showtime id).
+   * @param session - An active session.
+   * @returns The seat map.
+   */
+  seatMap?(ref: string, session: Session): Promise<SeatMap>;
+
+  /**
+   * List what a venue is showing on a date, without seat maps — the cheap catalog read that backs
+   * a movie/showtime picker. Optional; only providers with a browsable schedule implement it.
+   *
+   * @param venueId - Provider venue id.
+   * @param date - Venue-local `YYYY-MM-DD`.
+   * @param session - An active session.
+   * @returns The screenings playing that day.
+   */
+  listScreenings?(venueId: string, date: string, session: Session): Promise<Screening[]>;
 }

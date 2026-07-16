@@ -14,6 +14,7 @@ import type { BookrApp } from "../ports/bookr-app.ts";
 import type { Clock } from "../ports/clock.ts";
 import { createSqliteRepository } from "../adapters/persistence/sqlite-repository.ts";
 import { createResyProvider } from "../adapters/providers/resy/provider.ts";
+import { createAmcProvider } from "../adapters/providers/amc/provider.ts";
 import { createCredentialsProvider } from "../adapters/credentials/factory.ts";
 import { AppriseNotifier } from "../adapters/notify/apprise-notifier.ts";
 import { buildApp } from "./build-app.ts";
@@ -82,7 +83,10 @@ export async function createBookr(options: CreateBookrOptions): Promise<CreateBo
   };
 
   const notifier = new AppriseNotifier({ url: config.apprise.url, key: secrets.appriseKey });
-  const providers = new Map<ProviderName, BookingProvider>([["resy", createResyProvider({ clock })]]);
+  const providers = new Map<ProviderName, BookingProvider>([
+    ["resy", createResyProvider({ clock })],
+    ["amc", createAmcProvider({ clock })],
+  ]);
 
   const app = buildApp({ repository, notifier, credentialsProvider, providers, clock, config });
   return { app, secrets };

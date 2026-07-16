@@ -6,6 +6,9 @@ import type {
   HealthReport,
   ProviderName,
   ScanReport,
+  Screening,
+  SeatMapView,
+  SeatPrefEntry,
   Slot,
   VenueMatch,
   Watch,
@@ -108,6 +111,46 @@ export interface BookrApp {
      * @returns The booking outcome.
      */
     book(watchId: string, dedupeKey: string): Promise<BookResult>;
+  };
+
+  /** Seat maps and per-theater acceptable-seat preferences (assigned-seating providers). */
+  seating: {
+    /**
+     * List what a venue is showing on a date (movies + showtimes, no seat maps) for the picker.
+     *
+     * @param provider - The provider (must expose a browsable schedule).
+     * @param venueId - Provider venue id.
+     * @param date - Venue-local `YYYY-MM-DD`.
+     * @returns The screenings that day.
+     */
+    screenings(provider: ProviderName, venueId: string, date: string): Promise<Screening[]>;
+    /**
+     * Fetch a seat map for the picker UI.
+     *
+     * @param provider - The provider (must expose seat maps).
+     * @param ref - The provider's item reference (e.g. an AMC showtime id).
+     * @returns The layout, its geometry signature, and an occupancy digest.
+     */
+    map(provider: ProviderName, ref: string): Promise<SeatMapView>;
+    /**
+     * Fetch the cached acceptable-seat set for an auditorium.
+     *
+     * @param provider - The provider.
+     * @param venueId - Provider venue id.
+     * @param layoutKey - Layout-geometry signature.
+     * @returns The entry, or undefined.
+     */
+    getPrefs(provider: ProviderName, venueId: string, layoutKey: string): SeatPrefEntry | undefined;
+    /**
+     * Store an acceptable-seat set for an auditorium.
+     *
+     * @param provider - The provider.
+     * @param venueId - Provider venue id.
+     * @param layoutKey - Layout-geometry signature.
+     * @param seats - Acceptable seat names.
+     * @returns The stored entry.
+     */
+    putPrefs(provider: ProviderName, venueId: string, layoutKey: string, seats: string[]): SeatPrefEntry;
   };
 
   /** Credential and session management. */

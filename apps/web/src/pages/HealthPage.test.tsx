@@ -15,17 +15,16 @@ describe("HealthPage", () => {
 
   it("renders a degraded state", async () => {
     server.use(
-      http.get("/api/health", () =>
-        HttpResponse.json({
-          ok: false,
-          schedulerRunning: false,
-          providers: [{ provider: "resy", sessionState: "challenged", needsAttention: true }],
-        }),
+      http.get("/api/health", () => HttpResponse.json({ ok: false, schedulerRunning: false })),
+      // Per-provider detail comes from the authenticated credentials endpoint, not /api/health.
+      http.get("/api/credentials", () =>
+        HttpResponse.json([{ provider: "resy", sessionState: "challenged", needsAttention: true }]),
       ),
     );
     render(<HealthPage />);
     expect(await screen.findByText("Needs attention")).toBeTruthy();
     expect(screen.getByText("stopped")).toBeTruthy();
+    expect(await screen.findByText("challenged")).toBeTruthy();
     expect(screen.getByText("challenged").className).toContain("needs-attention");
   });
 

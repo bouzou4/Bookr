@@ -9,13 +9,26 @@
 import { z } from "zod";
 
 /** Validates a supported provider name. */
-export const providerNameSchema = z.enum(["resy", "sohohouse", "opentable"]);
+export const providerNameSchema = z.enum(["resy", "sohohouse", "opentable", "amc"]);
 
 /** Validates a resource type. */
 export const resourceTypeSchema = z.enum(["table", "bedroom", "screening", "event"]);
 
 /** Validates alert severity. */
 export const severitySchema = z.enum(["urgent", "warning", "info"]);
+
+/** Validates a horizontal seat zone. */
+export const seatZoneSchema = z.enum(["left", "center", "right"]);
+
+/** Validates a seat depth. */
+export const seatDepthSchema = z.enum(["front", "middle", "back"]);
+
+/** Validates per-watch seat preferences for assigned-seating providers. */
+export const seatingPreferenceSchema = z.object({
+  seats: z.array(z.string().min(1)).nonempty().optional(),
+  zones: z.array(seatZoneSchema).nonempty().optional(),
+  depths: z.array(seatDepthSchema).nonempty().optional(),
+});
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h)");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
@@ -45,6 +58,12 @@ export const watchInputSchema = z.object({
   label: z.string().min(1),
   venue: z.object({ id: z.string().min(1), slug: z.string().optional() }),
   resourceType: resourceTypeSchema.default("table"),
+  item: z
+    .object({ id: z.string().min(1).optional(), query: z.string().min(1).optional() })
+    .refine((i) => i.id != null || i.query != null, { message: "item needs an id or a query" })
+    .optional(),
+  tiers: z.array(z.string().min(1)).nonempty().optional(),
+  seating: seatingPreferenceSchema.optional(),
   partySize: z.number().int().min(1).max(20),
   dateRange: dateRangeSchema,
   timeWindow: z.object({ start: hhmm, end: hhmm }),
@@ -84,6 +103,31 @@ export const venueResolveSchema = z.object({
 export const bookRequestSchema = z.object({
   watchId: z.string().min(1),
   dedupeKey: z.string().min(1),
+});
+
+/** Validates a seat-map fetch request (provider + the provider's item reference). */
+export const seatMapRequestSchema = z.object({
+  provider: providerNameSchema,
+  ref: z.string().min(1),
+});
+
+/** Validates a screenings-listing request (what's playing at a venue on a date). */
+export const screeningsRequestSchema = z.object({
+  provider: providerNameSchema,
+  venueId: z.string().min(1),
+  date: isoDate,
+});
+
+/** Validates a seat-preference lookup. */
+export const seatPrefGetSchema = z.object({
+  provider: providerNameSchema,
+  venueId: z.string().min(1),
+  layoutKey: z.string().min(1),
+});
+
+/** Validates a seat-preference upsert (the server stamps `updatedAt`). */
+export const seatPrefPutSchema = seatPrefGetSchema.extend({
+  seats: z.array(z.string().min(1)),
 });
 
 /** Validates a dashboard login. */

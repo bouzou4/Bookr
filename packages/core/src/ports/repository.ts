@@ -4,6 +4,7 @@ import type {
   DropEvent,
   DropStats,
   ProviderName,
+  SeatPrefEntry,
   SeenEntry,
   Session,
   Watch,
@@ -141,6 +142,25 @@ export interface DropRepository {
   stats(venueId: string): DropStats;
 }
 
+/** Persistence for per-theater acceptable-seat preferences. */
+export interface SeatPrefRepository {
+  /**
+   * Fetch the cached acceptable-seat set for an auditorium.
+   *
+   * @param provider - The provider.
+   * @param venueId - Provider venue id.
+   * @param layoutKey - Layout-geometry signature of the auditorium.
+   * @returns The entry, or undefined.
+   */
+  get(provider: ProviderName, venueId: string, layoutKey: string): SeatPrefEntry | undefined;
+  /**
+   * Store (upsert) an acceptable-seat set.
+   *
+   * @param entry - The entry to persist.
+   */
+  put(entry: SeatPrefEntry): void;
+}
+
 /** The full persistence surface the core depends on. Adapters expose only these methods. */
 export interface Repository {
   /** Watch persistence. */
@@ -153,4 +173,6 @@ export interface Repository {
   activity: ActivityRepository;
   /** Drop-log persistence. */
   droplog: DropRepository;
+  /** Per-theater acceptable-seat preference persistence. */
+  seatPrefs: SeatPrefRepository;
 }

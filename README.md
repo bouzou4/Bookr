@@ -1,18 +1,27 @@
 # Bookr
 
 A pluggable reservation scanner. It watches a booking provider for newly-freed
-reservations (cancellations) within a target date/time window and alerts you —
-optionally auto-booking. **Resy** is the first provider; the design is
-provider-agnostic so more (e.g. SoHo House) drop in as one module.
+inventory — a cancelled table, seats opening up in a sold-out screening — within
+a target date/time window and alerts you, optionally auto-booking. Providers so
+far: **Resy** (restaurants) and **AMC Theatres** (movie screenings); the design
+is provider-agnostic so more (e.g. SoHo House) drop in as one module.
 
 ## Design at a glance
 
 - **Notify-first.** By default Bookr alerts you with a one-tap deep link.
-  Auto-booking is a per-watch opt-in (`autobook`, default off).
+  Auto-booking is a per-watch opt-in (`autobook`, default off; capability-gated
+  per provider — AMC is notify-only).
+- **Seat-aware.** For assigned-seating providers, watches carry seat
+  preferences: draw your acceptable seats on the dashboard's seat-map picker
+  (remembered per theater) and Bookr alerts only when a contiguous block big
+  enough for your party opens up *in those seats* — with occupancy context
+  ("62% full; best: 4 adjacent, row G center") and a deep link that pre-selects
+  the block.
 - **Two swappable abstractions:**
-  - `BookingProvider` — `resy` (first), others plug in. Selected per watch.
+  - `BookingProvider` — `resy`, `amc`, others plug in. Selected per watch.
   - `CredentialsProvider` — `env` (default, works for anyone) or `vaultwarden`.
     Selected by `CREDENTIALS_PROVIDER`. No personal config lives in source.
+    (AMC needs no credentials at all — its catalog is read anonymously.)
 - **Self-servicing credentials.** The server logs in and refreshes tokens itself;
   if a login is challenged it alerts you and accepts a fresh token pushed to an
   authenticated ingest endpoint — usable from anywhere.

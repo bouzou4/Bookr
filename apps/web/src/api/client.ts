@@ -14,6 +14,9 @@ import type {
   HealthReport,
   ProviderName,
   ScanReport,
+  Screening,
+  SeatMapView,
+  SeatPrefEntry,
   Slot,
   VenueMatch,
   Watch,
@@ -155,6 +158,28 @@ export const api = {
       }),
   },
 
+  /** Seat maps and per-theater acceptable-seat preferences (assigned-seating providers). */
+  seating: {
+    /** List what a venue is showing on a date (movies + showtimes, no seat maps). */
+    screenings: (provider: ProviderName, venueId: string, date: string): Promise<Screening[]> =>
+      request(`/api/screenings${query({ provider, venueId, date })}`),
+    /** Fetch a seat map (layout + geometry signature + occupancy digest) for a showtime ref. */
+    map: (provider: ProviderName, ref: string): Promise<SeatMapView> =>
+      request("/api/seatmap", { method: "POST", body: JSON.stringify({ provider, ref }) }),
+    /** Fetch the cached acceptable-seat set for an auditorium, or null when none is stored. */
+    getPrefs: async (provider: ProviderName, venueId: string, layoutKey: string): Promise<SeatPrefEntry | null> => {
+      try {
+        return await request(`/api/seat-prefs${query({ provider, venueId, layoutKey })}`);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    /** Store the acceptable-seat set for an auditorium (the per-theater cache). */
+    putPrefs: (provider: ProviderName, venueId: string, layoutKey: string, seats: string[]): Promise<SeatPrefEntry> =>
+      request("/api/seat-prefs", { method: "PUT", body: JSON.stringify({ provider, venueId, layoutKey, seats }) }),
+  },
+
   /** Manual booking of a previously observed slot. */
   booking: {
     /** Attempt to book a slot by dedupe key. The server 403s unless the watch has autobook on. */
@@ -164,7 +189,11 @@ export const api = {
 
   /** Service health, unauthenticated. */
   health: {
-    /** Fetch the current health report. */
-    status: (): Promise<HealthReport> => request("/api/health"),
+    /**
+     * Fetch the public health snapshot. This endpoint is intentionally minimal (no per-provider
+     * detail — that lives behind the authenticated {@link api.credentials.status} route), so the
+     * returned shape omits `providers`.
+     */
+    status: (): Promise<Omit<HealthReport, "providers">> => request("/api/health"),
   },
 };

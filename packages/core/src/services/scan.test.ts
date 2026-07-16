@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "@bookr/shared";
-import type { ProviderName, Session } from "@bookr/shared";
+import type { ProviderName, SeatMap, Session, Slot } from "@bookr/shared";
+import { layoutSignature } from "../seating/signature.ts";
 import { FakeClock, FakeCredentialsProvider, FakeNotifier, FakeProvider, FakeRepository } from "@bookr/testkit";
 import type { BookingProvider } from "../ports/booking-provider.ts";
 import { ProviderError } from "../errors.ts";
@@ -209,5 +210,90 @@ describe("createScanService", () => {
     ctx.repository.watches.create(makeWatch({ provider: "opentable" }));
     const report = await createScanService(ctx).runOnce();
     expect(report.errors[0]?.class).toBe("other");
+  });
+
+  it("filters slots by the watch's tiers against slot.kind, case-insensitively", async () => {
+    const bar = makeSlot({ kind: "Bar Counter" });
+    const dining = makeSlot({ start: "20:00:00", kind: "Dining Room" });
+    const { ctx, notifier } = makeHarness(new FakeProvider({ slots: [bar, dining] }));
+    ctx.repository.watches.create(makeWatch({ tiers: ["dining"] }));
+
+    const report = await createScanService(ctx).runOnce();
+
+    expect(report.newSlots).toBe(1);
+    expect(notifier.bySeverity("urgent")[0]?.body).toContain("Dining Room");
+  });
+
+  const seatMap = (available: string[]): SeatMap => ({
+    rows: ["A", "B"],
+    columns: 4,
+    seats: (["A", "B"] as const).flatMap((row) =>
+      [1, 2, 3, 4].map((column) => {
+        const id = `${row}${String(column)}`;
+        return { id, row, column, status: available.includes(id) ? ("available" as const) : ("taken" as const) };
+      }),
+    ),
+  });
+
+  const screening = (map: SeatMap): Slot =>
+    makeSlot({ resourceType: "screening", kind: "Laser at AMC", seatMap: map });
+
+  it("gates seat-mapped slots on a contiguous block for the party and alerts once seats free up", async () => {
+    // Only single seats open: no block of 2 → gated out, never recorded as seen.
+    const { ctx, notifier } = makeHarness(new FakeProvider({ slots: [screening(seatMap(["A1", "A3"]))] }));
+    ctx.repository.watches.create(makeWatch({ resourceType: "screening" }));
+    const scan = createScanService(ctx);
+
+    const first = await scan.runOnce();
+    expect(first.newSlots).toBe(0);
+    expect(notifier.bySeverity("urgent")).toHaveLength(0);
+
+    // Two adjacent seats free up → the slot appears for the first time and alerts with context.
+    ctx.providers.set("resy", new FakeProvider({ slots: [screening(seatMap(["B2", "B3"]))] }));
+    const second = await scan.runOnce();
+    expect(second.newSlots).toBe(1);
+    const alert = notifier.bySeverity("urgent")[0];
+    expect(alert?.title).toContain("Seats available");
+    expect(alert?.body).toContain("75% full");
+    expect(alert?.body).toContain("2 adjacent, row B");
+  });
+
+  it("applies cached per-theater seat preferences via the layout signature", async () => {
+    const map = seatMap(["A1", "A2", "B3", "B4"]);
+    const provider = new FakeProvider({ slots: [screening(map)] });
+    const { ctx, notifier } = makeHarness(provider);
+    ctx.repository.watches.create(makeWatch({ resourceType: "screening" }));
+    // The user's drawn seats for this auditorium: row B only. Row A's open pair must not alert.
+    ctx.repository.seatPrefs.put({
+      provider: "resy",
+      venueId: "v1",
+      layoutKey: layoutSignature(map),
+      seats: ["B3", "B4"],
+      updatedAt: "2026-07-13T00:00:00.000Z",
+    });
+
+    await createScanService(ctx).runOnce();
+
+    const alert = notifier.bySeverity("urgent")[0];
+    expect(alert?.body).toContain("row B");
+    expect(alert?.body).not.toContain("row A");
+  });
+
+  it("drops a seat-mapped slot when the cached preference excludes every open block", async () => {
+    const map = seatMap(["A1", "A2"]);
+    const { ctx, notifier } = makeHarness(new FakeProvider({ slots: [screening(map)] }));
+    ctx.repository.watches.create(makeWatch({ resourceType: "screening" }));
+    ctx.repository.seatPrefs.put({
+      provider: "resy",
+      venueId: "v1",
+      layoutKey: layoutSignature(map),
+      seats: ["B1", "B2"],
+      updatedAt: "2026-07-13T00:00:00.000Z",
+    });
+
+    const report = await createScanService(ctx).runOnce();
+
+    expect(report.newSlots).toBe(0);
+    expect(notifier.bySeverity("urgent")).toHaveLength(0);
   });
 });

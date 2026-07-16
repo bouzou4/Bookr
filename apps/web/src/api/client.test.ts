@@ -83,7 +83,9 @@ describe("api client", () => {
   });
 
   it("resolves venues and checks availability", async () => {
-    await expect(api.venues.resolve("resy", "carbone")).resolves.toEqual([]);
+    await expect(api.venues.resolve("resy", "carbone")).resolves.toEqual([
+      { provider: "resy", id: "42", name: "Test Venue 42" },
+    ]);
     await expect(
       api.availability.check({ provider: "resy", venueId: "1234", date: "2026-07-20", partySize: 2 }),
     ).resolves.toEqual([]);

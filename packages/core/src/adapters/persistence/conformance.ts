@@ -88,8 +88,54 @@ export function repositoryConformanceTests(
         expect(repo.watches.get("watch-rolling")?.dateRange).toEqual({ rollingDays: 14 });
       });
 
+      it("round-trips item, tiers, and seating; absent fields stay absent", () => {
+        const screening = makeWatch({
+          id: "watch-screening",
+          resourceType: "screening",
+          item: { query: "odyssey" },
+          tiers: ["laseratamc", "imax"],
+          seating: { seats: ["F5", "F6", "F7"], zones: ["center"], depths: ["middle", "back"] },
+        });
+        repo.watches.create(screening);
+        expect(repo.watches.get("watch-screening")).toEqual(screening);
+
+        const bare = repo.watches.get(makeWatch().id) ?? repo.watches.create(makeWatch());
+        expect(bare.item).toBeUndefined();
+        expect(bare.tiers).toBeUndefined();
+        expect(bare.seating).toBeUndefined();
+      });
+
       it("returns undefined for a missing watch", () => {
         expect(repo.watches.get("nope")).toBeUndefined();
+      });
+    });
+
+    describe("seatPrefs", () => {
+      it("returns undefined for an unknown key and upserts on put", () => {
+        expect(repo.seatPrefs.get("amc", "new-york-city/amc-34th-street-14", "sig1")).toBeUndefined();
+
+        repo.seatPrefs.put({
+          provider: "amc",
+          venueId: "new-york-city/amc-34th-street-14",
+          layoutKey: "sig1",
+          seats: ["F5", "F6"],
+          updatedAt: "2026-07-15T00:00:00.000Z",
+        });
+        expect(repo.seatPrefs.get("amc", "new-york-city/amc-34th-street-14", "sig1")?.seats).toEqual(["F5", "F6"]);
+
+        repo.seatPrefs.put({
+          provider: "amc",
+          venueId: "new-york-city/amc-34th-street-14",
+          layoutKey: "sig1",
+          seats: ["G1"],
+          updatedAt: "2026-07-16T00:00:00.000Z",
+        });
+        const updated = repo.seatPrefs.get("amc", "new-york-city/amc-34th-street-14", "sig1");
+        expect(updated?.seats).toEqual(["G1"]);
+        expect(updated?.updatedAt).toBe("2026-07-16T00:00:00.000Z");
+
+        // Distinct layout keys are distinct auditoriums.
+        expect(repo.seatPrefs.get("amc", "new-york-city/amc-34th-street-14", "sig2")).toBeUndefined();
       });
     });
 

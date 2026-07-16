@@ -4,6 +4,9 @@ import type {
   BookResult,
   CredentialStatus,
   ScanReport,
+  Screening,
+  SeatMapView,
+  SeatPrefEntry,
   Slot,
   VenueMatch,
   Watch,
@@ -23,6 +26,10 @@ export interface FakeBookrSeed {
   bookResult?: BookResult;
   /** Per-provider credential status. */
   credentialStatus?: CredentialStatus[];
+  /** Seat-map view returned by seating.map. Absent → seating.map rejects. */
+  seatMapView?: SeatMapView;
+  /** Screenings returned by seating.screenings. Defaults to empty. */
+  screenings?: Screening[];
 }
 
 /**
@@ -37,6 +44,7 @@ export function createFakeBookr(seed: FakeBookrSeed = {}): BookrApp {
   const watches = new Map<string, Watch>();
   for (const w of seed.watches ?? []) watches.set(w.id, w);
   const activity: ActivityEvent[] = [];
+  const seatPrefs = new Map<string, SeatPrefEntry>();
   let idCounter = 0;
   let schedulerRunning = false;
   let lastPassAt: string | undefined;
@@ -100,6 +108,19 @@ export function createFakeBookr(seed: FakeBookrSeed = {}): BookrApp {
     booking: {
       book: async (): Promise<BookResult> =>
         seed.bookResult ?? { status: "failed", deepLink: "https://example.test", detail: "fake" },
+    },
+    seating: {
+      screenings: async (): Promise<Screening[]> => seed.screenings ?? [],
+      map: async (provider): Promise<SeatMapView> => {
+        if (!seed.seatMapView) throw new Error(`${provider} does not expose seat maps`);
+        return seed.seatMapView;
+      },
+      getPrefs: (provider, venueId, layoutKey) => seatPrefs.get(`${provider}:${venueId}:${layoutKey}`),
+      putPrefs: (provider, venueId, layoutKey, seats): SeatPrefEntry => {
+        const entry: SeatPrefEntry = { provider, venueId, layoutKey, seats, updatedAt: now() };
+        seatPrefs.set(`${provider}:${venueId}:${layoutKey}`, entry);
+        return entry;
+      },
     },
     credentials: {
       status: async (): Promise<CredentialStatus[]> => seed.credentialStatus ?? [],

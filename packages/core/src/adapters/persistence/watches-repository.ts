@@ -5,7 +5,7 @@
  */
 
 import type Database from "better-sqlite3";
-import type { DateRange, ResourceType, Watch } from "@bookr/shared";
+import type { DateRange, ResourceType, SeatingPreference, Watch } from "@bookr/shared";
 import type { WatchRepository } from "../../ports/repository.ts";
 
 interface WatchRow {
@@ -15,6 +15,9 @@ interface WatchRow {
   venue_id: string;
   venue_slug: string | null;
   resource_type: string;
+  item_json: string | null;
+  tiers_json: string | null;
+  seating_json: string | null;
   party_size: number;
   date_range_start: string | null;
   date_range_end: string | null;
@@ -35,6 +38,16 @@ function toDateRange(row: WatchRow): DateRange {
   return { start: row.date_range_start ?? "", end: row.date_range_end ?? "" };
 }
 
+/** Parse a nullable JSON column, treating NULL as "field absent". */
+function fromJson<T>(value: string | null): T | undefined {
+  return value === null ? undefined : (JSON.parse(value) as T);
+}
+
+/** Serialize an optional field into a nullable JSON column. */
+function toJson(value: unknown): string | null {
+  return value === undefined ? null : JSON.stringify(value);
+}
+
 function rowToWatch(row: WatchRow): Watch {
   return {
     id: row.id,
@@ -42,6 +55,9 @@ function rowToWatch(row: WatchRow): Watch {
     label: row.label,
     venue: { id: row.venue_id, slug: row.venue_slug ?? undefined },
     resourceType: row.resource_type as ResourceType,
+    item: fromJson<Watch["item"]>(row.item_json),
+    tiers: fromJson<string[]>(row.tiers_json),
+    seating: fromJson<SeatingPreference>(row.seating_json),
     partySize: row.party_size,
     dateRange: toDateRange(row),
     timeWindow: { start: row.time_window_start, end: row.time_window_end },
@@ -75,6 +91,9 @@ function watchToParams(watch: Watch): Record<string, unknown> {
     venue_id: watch.venue.id,
     venue_slug: watch.venue.slug ?? null,
     resource_type: watch.resourceType,
+    item_json: toJson(watch.item),
+    tiers_json: toJson(watch.tiers),
+    seating_json: toJson(watch.seating),
     party_size: watch.partySize,
     date_range_start: range.start,
     date_range_end: range.end,
@@ -100,11 +119,13 @@ export function createWatchesRepository(db: Database.Database): WatchRepository 
   const getStmt = db.prepare("SELECT * FROM watches WHERE id = ?");
   const insertStmt = db.prepare(`
     INSERT INTO watches (
-      id, provider, label, venue_id, venue_slug, resource_type, party_size,
+      id, provider, label, venue_id, venue_slug, resource_type,
+      item_json, tiers_json, seating_json, party_size,
       date_range_start, date_range_end, date_range_rolling_days,
       time_window_start, time_window_end, timezone, autobook, enabled, created_at, updated_at
     ) VALUES (
-      @id, @provider, @label, @venue_id, @venue_slug, @resource_type, @party_size,
+      @id, @provider, @label, @venue_id, @venue_slug, @resource_type,
+      @item_json, @tiers_json, @seating_json, @party_size,
       @date_range_start, @date_range_end, @date_range_rolling_days,
       @time_window_start, @time_window_end, @timezone, @autobook, @enabled, @created_at, @updated_at
     )
@@ -113,6 +134,7 @@ export function createWatchesRepository(db: Database.Database): WatchRepository 
     UPDATE watches SET
       provider = @provider, label = @label, venue_id = @venue_id, venue_slug = @venue_slug,
       resource_type = @resource_type, party_size = @party_size,
+      item_json = @item_json, tiers_json = @tiers_json, seating_json = @seating_json,
       date_range_start = @date_range_start, date_range_end = @date_range_end,
       date_range_rolling_days = @date_range_rolling_days,
       time_window_start = @time_window_start, time_window_end = @time_window_end,

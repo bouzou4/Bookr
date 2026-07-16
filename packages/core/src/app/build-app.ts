@@ -21,6 +21,7 @@ import { createVenueService } from "../services/venues.ts";
 import { createScanService } from "../services/scan.ts";
 import { createBookingService } from "../services/booking.ts";
 import { createCredentialService } from "../services/credentials.ts";
+import { createSeatingService } from "../services/seating.ts";
 import { createActivityService } from "../services/activity.ts";
 import { createHealthService } from "../services/health.ts";
 import { createScheduler } from "../scheduler/scheduler.ts";
@@ -65,6 +66,7 @@ export function buildApp(deps: BuildAppDeps): BookrApp {
   const scan = createScanService(ctx);
   const booking = createBookingService(ctx);
   const credentials = createCredentialService(ctx);
+  const seating = createSeatingService(ctx);
   const activity = createActivityService(ctx);
   const scheduler = createScheduler({
     scan,
@@ -82,6 +84,7 @@ export function buildApp(deps: BuildAppDeps): BookrApp {
     scan,
     booking,
     credentials,
+    seating,
     activity,
     health,
     scheduler,

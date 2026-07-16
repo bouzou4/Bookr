@@ -59,3 +59,20 @@ export interface ServerConfig {
 
 /** Name of the single-user session cookie. The `__Host-` prefix pins it to this host over HTTPS. */
 export const SESSION_COOKIE_NAME = "__Host-bookr.sid";
+
+/**
+ * Cookie name used when {@link ServerConfig.cookieSecure} is false (local plaintext dev). The
+ * `__Host-` prefix mandates the `Secure` attribute, so a browser rejects it over plain HTTP; drop
+ * the prefix in that mode.
+ */
+export const SESSION_COOKIE_NAME_INSECURE = "bookr.sid";
+
+/**
+ * Choose the session cookie name for the cookie's security mode.
+ *
+ * @param cookieSecure - Whether the cookie carries the `Secure` attribute.
+ * @returns The `__Host-`-prefixed name when secure, else the plain name.
+ */
+export function sessionCookieName(cookieSecure: boolean): string {
+  return cookieSecure ? SESSION_COOKIE_NAME : SESSION_COOKIE_NAME_INSECURE;
+}

@@ -11,7 +11,7 @@ import Database from "better-sqlite3";
 import session from "express-session";
 import type { RequestHandler } from "express";
 import SqliteStoreFactory from "better-sqlite3-session-store";
-import { SESSION_COOKIE_NAME, type ServerConfig } from "./config.ts";
+import { sessionCookieName, type ServerConfig } from "./config.ts";
 
 /** Fields Bookr stores on a session. */
 declare module "express-session" {
@@ -45,15 +45,16 @@ export function createSessionMiddleware(config: ServerConfig): RequestHandler {
     expired: { clear: config.sessionPrune ?? true, intervalMs: STORE_PRUNE_INTERVAL_MS },
   });
 
+  const cookieSecure = config.cookieSecure ?? true;
   return session({
-    name: SESSION_COOKIE_NAME,
+    name: sessionCookieName(cookieSecure),
     secret: config.sessionSecret,
     store,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: config.cookieSecure ?? true,
+      secure: cookieSecure,
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_TTL_MS,

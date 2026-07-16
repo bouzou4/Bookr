@@ -16,6 +16,10 @@ import {
   ingestSchema,
   loginSchema,
   providerNameSchema,
+  screeningsRequestSchema,
+  seatMapRequestSchema,
+  seatPrefGetSchema,
+  seatPrefPutSchema,
   venueResolveSchema,
   watchInputSchema,
   watchUpdateSchema,
@@ -207,6 +211,43 @@ export function createApiRouter(app: BookrApp, config: ServerConfig): Router {
     const body = parseBody(venueResolveSchema, req, res);
     if (!body) return;
     res.json(await app.venues.resolve(body.query, body.provider));
+  });
+
+  // Screenings (what a venue is showing on a date) — backs the movie/showtime picker.
+  router.get("/screenings", async (req, res) => {
+    const query = screeningsRequestSchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "invalid query", issues: query.error.issues });
+      return;
+    }
+    res.json(await app.seating.screenings(query.data.provider, query.data.venueId, query.data.date));
+  });
+
+  // Seat maps & per-theater acceptable-seat preferences.
+  router.post("/seatmap", async (req, res) => {
+    const body = parseBody(seatMapRequestSchema, req, res);
+    if (!body) return;
+    res.json(await app.seating.map(body.provider, body.ref));
+  });
+
+  router.get("/seat-prefs", (req, res) => {
+    const query = seatPrefGetSchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "invalid query", issues: query.error.issues });
+      return;
+    }
+    const entry = app.seating.getPrefs(query.data.provider, query.data.venueId, query.data.layoutKey);
+    if (!entry) {
+      res.status(404).json({ error: "no seat preferences for this layout" });
+      return;
+    }
+    res.json(entry);
+  });
+
+  router.put("/seat-prefs", (req, res) => {
+    const body = parseBody(seatPrefPutSchema, req, res);
+    if (!body) return;
+    res.json(app.seating.putPrefs(body.provider, body.venueId, body.layoutKey, body.seats));
   });
 
   // Activity & credentials.

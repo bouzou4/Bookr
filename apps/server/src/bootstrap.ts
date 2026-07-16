@@ -33,6 +33,9 @@ export async function bootstrap(): Promise<Bootstrapped> {
     ingestToken: secrets.ingestToken,
     dataDir: config.dataDir,
     trustProxy: config.trustProxy,
+    // COOKIE_SECURE=false relaxes the session cookie for local plaintext (LAN/HTTP) dev; unset
+    // keeps the hardened Secure + `__Host-` default. Any other value is treated as secure.
+    ...(process.env.COOKIE_SECURE !== undefined ? { cookieSecure: process.env.COOKIE_SECURE !== "false" } : {}),
     ...(process.env.WEB_ROOT ? { webRoot: process.env.WEB_ROOT } : {}),
   };
   return { app, config: serverConfig };

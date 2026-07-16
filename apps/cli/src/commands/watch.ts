@@ -28,8 +28,22 @@ interface AddOpts {
   rollingDays?: string;
   window: string;
   timezone: string;
+  item?: string;
+  tiers?: string;
+  seats?: string;
+  zones?: string;
+  depths?: string;
   autobook: boolean;
   disabled: boolean;
+}
+
+/** Split a comma-separated flag into a trimmed list, or undefined when absent/empty. */
+function csv(value: string | undefined): string[] | undefined {
+  const items = value
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return items?.length ? items : undefined;
 }
 
 /**
@@ -57,6 +71,11 @@ export function registerWatchCommand(program: Command, app: BookrApp, io: CliIO,
     .option("--rolling-days <n>", "rolling window length in days, from venue-local today")
     .requiredOption("--window <HH:MM-HH:MM>", "acceptable seating window")
     .requiredOption("--timezone <tz>", "IANA timezone, e.g. America/New_York")
+    .option("--item <query>", "specific film/event within the venue (title match)")
+    .option("--tiers <list>", "acceptable tiers, comma-separated (e.g. \"imax,dolby\" or \"bar counter\")")
+    .option("--seats <list>", "acceptable seat names, comma-separated (e.g. \"F5,F6,F7\")")
+    .option("--zones <list>", "acceptable seat zones: left,center,right")
+    .option("--depths <list>", "acceptable seat depths: front,middle,back")
     .option("--autobook", "attempt to auto-book matches (capability-gated)", false)
     .option("--disabled", "create the watch disabled instead of enabled", false)
     .action(async (opts: AddOpts, command: Command) => {
@@ -70,11 +89,18 @@ export function registerWatchCommand(program: Command, app: BookrApp, io: CliIO,
         } else {
           throw new CliValidationError("provide --rolling-days, or both --date-start and --date-end");
         }
+        const seats = csv(opts.seats);
+        const zones = csv(opts.zones);
+        const depths = csv(opts.depths);
+        const seating = seats || zones || depths ? { seats, zones, depths } : undefined;
         const input = watchInputSchema.parse({
           provider: opts.provider,
           label: opts.label,
           venue: { id: opts.venueId, slug: opts.venueSlug },
           resourceType: opts.resourceType,
+          item: opts.item ? { query: opts.item } : undefined,
+          tiers: csv(opts.tiers),
+          seating,
           partySize: Number(opts.partySize),
           dateRange,
           timeWindow: parseWindow(opts.window),

@@ -14,6 +14,7 @@ import { createSessionsRepository } from "./sessions-repository.ts";
 import { createSeenRepository } from "./seen-repository.ts";
 import { createActivityRepository } from "./activity-repository.ts";
 import { createDroplogRepository } from "./droplog-repository.ts";
+import { createSeatPrefsRepository } from "./seat-prefs-repository.ts";
 
 /** The system clock, used unless a test injects a fake one. */
 const systemClock: Clock = {
@@ -56,6 +57,7 @@ export function createSqliteRepository(opts: SqliteRepositoryOptions): SqliteRep
     seen: createSeenRepository(db),
     activity: createActivityRepository(db, clock),
     droplog: createDroplogRepository(db),
+    seatPrefs: createSeatPrefsRepository(db),
     close: () => db.close(),
     raw: db,
   };

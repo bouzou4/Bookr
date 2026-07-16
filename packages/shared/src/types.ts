@@ -6,7 +6,7 @@
  */
 
 /** Supported booking providers. */
-export type ProviderName = "resy" | "sohohouse" | "opentable";
+export type ProviderName = "resy" | "sohohouse" | "opentable" | "amc";
 
 /** Category of bookable inventory a watch targets. Defaults to `"table"`. */
 export type ResourceType = "table" | "bedroom" | "screening" | "event";
@@ -45,6 +45,30 @@ export interface ProviderCapabilities {
 /** A fixed ISO date range, or a window that rolls forward from venue-local today. */
 export type DateRange = { start: string; end: string } | { rollingDays: number };
 
+/** Horizontal section of a seated venue, thirds by column span. */
+export type SeatZone = "left" | "center" | "right";
+
+/** Distance-from-screen/stage section of a seated venue, thirds by row index. */
+export type SeatDepth = "front" | "middle" | "back";
+
+/**
+ * Per-watch seat preferences for providers with assigned seating. A slot only alerts when a
+ * contiguous block of at least the watch's party size falls within every listed preference;
+ * an omitted field means "anywhere". Providers without seat maps ignore this entirely.
+ */
+export interface SeatingPreference {
+  /**
+   * Explicit acceptable seat names drawn in the seat-map picker (e.g. `["F5","F6","F7"]`).
+   * When present this wins over zones/depths. Per-theater sets are also cached against the
+   * auditorium's layout signature so future watches at the same theater inherit them.
+   */
+  seats?: string[];
+  /** Acceptable horizontal zones (e.g. `["center"]` to skip far-side blocks). */
+  zones?: SeatZone[];
+  /** Acceptable depths (e.g. `["middle", "back"]` to skip the front rows). */
+  depths?: SeatDepth[];
+}
+
 /** A single reservation watch: what to look for and how to act on a match. */
 export interface Watch {
   /** Stable unique id. */
@@ -57,6 +81,20 @@ export interface Watch {
   venue: { id: string; slug?: string };
   /** Inventory category. */
   resourceType: ResourceType;
+  /**
+   * The specific item within the venue to watch, for venues that host many distinct bookables
+   * (e.g. a cinema screening many films). `query` is a case-insensitive title match; `id` pins a
+   * provider item id when known. Omitted → the whole venue.
+   */
+  item?: { id?: string; query?: string };
+  /**
+   * Acceptable inventory tiers, matched case-insensitively against {@link Slot.kind}. The tier
+   * concept is provider-agnostic: Resy seating types ("Bar Counter", "Outdoor") and AMC formats
+   * ("IMAX", "Dolby Cinema", "70mm") are the same axis. Omitted → any tier.
+   */
+  tiers?: string[];
+  /** Seat-location preferences for assigned-seating providers. Omitted → any seats. */
+  seating?: SeatingPreference;
   /** Number of guests. */
   partySize: number;
   /** Target date range (fixed or rolling). */
@@ -75,6 +113,63 @@ export interface Watch {
   updatedAt: string;
 }
 
+/** Occupancy state of a single assigned seat. */
+export type SeatStatus = "available" | "taken" | "unavailable";
+
+/** One assigned seat in a {@link SeatMap}. */
+export interface Seat {
+  /** Provider seat id (the handle a booking flow would submit). */
+  id: string;
+  /** Row label as the venue prints it (e.g. `"G"`). */
+  row: string;
+  /** Zero-based column index within the row, gaps included. */
+  column: number;
+  /** Occupancy state. `unavailable` covers non-sellable positions (companion, broken, blocked). */
+  status: SeatStatus;
+  /** Provider seat type (e.g. AMC `"LoveSeatLeft"`, `"WheelchairAccessible"`), when known. */
+  type?: string;
+}
+
+/** A full seating layout for one screening/performance, as fetched from the provider. */
+export interface SeatMap {
+  /** Row labels in front-to-back order; index = distance from the screen/stage. */
+  rows: string[];
+  /** Column count of the widest row, gaps included. */
+  columns: number;
+  /** Every physical seat. Positions absent from this list are aisles/voids. */
+  seats: Seat[];
+}
+
+/** A contiguous run of available seats within one row. */
+export interface SeatBlock {
+  /** Row label. */
+  row: string;
+  /** Seat ids in the block, left to right. */
+  seatIds: string[];
+  /** Number of seats in the block. */
+  size: number;
+  /** Horizontal zone of the block's midpoint. */
+  position: SeatZone;
+  /** Depth of the block's row. */
+  depth: SeatDepth;
+}
+
+/**
+ * A compact, alert-ready digest of a {@link SeatMap}: overall occupancy plus the open blocks,
+ * best-first (center beats sides, back/middle beats front, larger beats smaller). Providers attach
+ * it to a {@link Slot} so notifications can say *where* the open seats are, not just that some exist.
+ */
+export interface SeatingSummary {
+  /** Total sellable seats. */
+  totalSeats: number;
+  /** Currently available seats. */
+  availableSeats: number;
+  /** Percentage of sellable seats taken, 0–100 rounded. */
+  percentTaken: number;
+  /** Contiguous available blocks, best-first. */
+  blocks: SeatBlock[];
+}
+
 /** A concrete availability opening returned by a provider's `find`. */
 export interface Slot {
   /** Provider that produced this slot. */
@@ -91,12 +186,33 @@ export interface Slot {
   kind?: string;
   /** True for exclusive/premium inventory (e.g. Resy Global Dining Access). */
   exclusive?: boolean;
+  /** Seat-map digest for assigned-seating providers; drives seat-location context in alerts. */
+  seating?: SeatingSummary;
+  /**
+   * Full seating layout, emitted by assigned-seating providers alongside the digest. The scan
+   * engine — not the adapter — applies the acceptable-seat gate, because resolving cached
+   * per-theater preferences requires repository access adapters don't have. Never persisted.
+   */
+  seatMap?: SeatMap;
   /** Stable key identifying this opening across passes; used to suppress duplicate alerts. */
   dedupeKey: string;
   /** Opaque handle the same provider uses to book this slot. */
   bookRef?: unknown;
   /** Full raw provider payload, retained so provider fields not surfaced above stay accessible. */
   raw?: unknown;
+}
+
+/**
+ * A seat map prepared for the picker UI: the layout itself, its geometry signature (the
+ * per-theater preference cache key), and the occupancy digest.
+ */
+export interface SeatMapView {
+  /** The full layout. */
+  map: SeatMap;
+  /** Layout-geometry signature identifying the auditorium. */
+  signature: string;
+  /** Occupancy digest (unmasked). */
+  summary: SeatingSummary;
 }
 
 /** Lifecycle state of a provider authentication session. */
@@ -140,6 +256,24 @@ export type BookResult =
   | { status: "locked-unconfirmed"; deepLink: string; detail: string }
   | { status: "challenged"; deepLink: string; detail: string }
   | { status: "failed"; deepLink: string; detail: string };
+
+/**
+ * A cached acceptable-seat set for one auditorium, keyed by provider + venue + layout-geometry
+ * signature. Drawn once in the seat-map picker, then auto-applied to any watch at the same
+ * theater whose showtime resolves to the same layout.
+ */
+export interface SeatPrefEntry {
+  /** Owning provider. */
+  provider: ProviderName;
+  /** Provider venue id. */
+  venueId: string;
+  /** Layout-geometry signature identifying the auditorium (see the core seating engine). */
+  layoutKey: string;
+  /** Acceptable seat names. */
+  seats: string[];
+  /** ISO last-update timestamp. */
+  updatedAt: string;
+}
 
 /** Dedupe bookkeeping for a previously-seen slot. */
 export interface SeenEntry {
@@ -218,6 +352,27 @@ export interface DropStats {
   sampleCount: number;
   /** Observation counts per hours-until bucket label. */
   byHoursUntilBucket: Record<string, number>;
+}
+
+/**
+ * A single screening/performance a venue is showing on a date, without the seat map — the cheap
+ * catalog record that drives a movie/showtime picker before any seat layout is fetched.
+ */
+export interface Screening {
+  /** Provider that produced the screening. */
+  provider: ProviderName;
+  /** Provider reference for the screening (seat-map + deep-link handle; e.g. an AMC showtime id). */
+  ref: string;
+  /** The film's provider slug/id (what a watch stores as `item.id`). */
+  filmId: string;
+  /** Display title. */
+  title: string;
+  /** Presentation format label (e.g. `"IMAX 70mm"`, `"Dolby Cinema"`), when known. */
+  format?: string;
+  /** Start instant, ISO UTC. */
+  startUtc: string;
+  /** Provider sellability status (e.g. `"Sellable"`, `"AlmostFull"`, `"Soldout"`). */
+  status: string;
 }
 
 /** A candidate venue match from a provider search. */

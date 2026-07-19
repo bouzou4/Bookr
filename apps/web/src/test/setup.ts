@@ -18,6 +18,16 @@ if (!window.matchMedia) {
     }) as unknown as MediaQueryList;
 }
 
+// jsdom doesn't implement ResizeObserver either; Radix's Switch/Presence machinery reaches for it
+// on mount.
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+}
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();

@@ -16,6 +16,7 @@ import { cn } from "../lib/utils.ts";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
 import { Label } from "./ui/label.tsx";
+import { Switch } from "./ui/switch.tsx";
 import { SeatMapPicker } from "./SeatMapPicker.tsx";
 
 const PROVIDERS: ProviderName[] = ["resy", "sohohouse", "opentable", "amc"];
@@ -31,6 +32,28 @@ const PROVIDER_RESOURCE_TYPES: Record<ProviderName, ResourceType[]> = {
   sohohouse: ["table", "bedroom"],
   amc: ["screening"],
 };
+
+/**
+ * Error paths cleared the moment a field is edited, so a fixed field never keeps showing a
+ * message from the previous submit.
+ */
+const FIELD_ERROR_PATHS: Partial<Record<keyof FormState, string[]>> = {
+  label: ["label"],
+  venueId: ["venue.id"],
+  partySize: ["partySize"],
+  rangeStart: ["dateRange", "dateRange.start"],
+  rangeEnd: ["dateRange", "dateRange.end"],
+  rollingDays: ["dateRange", "dateRange.rollingDays"],
+  windowStart: ["timeWindow.start"],
+  windowEnd: ["timeWindow.end"],
+  timezone: ["timezone"],
+};
+
+/** Swap zod's mechanical phrasing for human copy where it reads badly next to a field. */
+function humanizeMessage(message: string): string {
+  if (/at least 1 character/i.test(message)) return "Required.";
+  return message;
+}
 
 /** Shared visual treatment for native `<input>`/`<select>` controls, matching the `Input` primitive. */
 const controlClass =
@@ -163,6 +186,14 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]): void {
     setState((s) => ({ ...s, [key]: value }));
+    const cleared = FIELD_ERROR_PATHS[key];
+    if (cleared) {
+      setErrors((e) => {
+        const next = { ...e };
+        for (const path of cleared) delete next[path];
+        return next;
+      });
+    }
   }
 
   /**
@@ -227,6 +258,11 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
       venueSlug: match.slug ?? "",
       venueLabel: match.city ? `${match.name} — ${match.city}` : match.name,
     }));
+    setErrors((e) => {
+      const next = { ...e };
+      delete next["venue.id"];
+      return next;
+    });
     setVenueMatches(null);
     setVenueStatus(null);
     if (state.resourceType === "screening") void loadScreenings(match.id, state.browseDate);
@@ -314,7 +350,7 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
-        fieldErrors[issue.path.join(".")] = issue.message;
+        fieldErrors[issue.path.join(".")] = humanizeMessage(issue.message);
       }
       setErrors(fieldErrors);
       return;
@@ -336,100 +372,110 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
   }
 
   return (
-    <form className="space-y-6" onSubmit={handleSubmit} aria-label={initial ? "Edit watch" : "Create watch"}>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="provider">Provider</Label>
-          <select
-            id="provider"
-            className={cn(controlClass, "mt-1.5 cursor-pointer")}
-            value={state.provider}
-            onChange={(e) => changeProvider(e.target.value as ProviderName)}
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="resourceType">Resource type</Label>
-          <select
-            id="resourceType"
-            className={cn(controlClass, "mt-1.5 cursor-pointer")}
-            value={state.resourceType}
-            onChange={(e) => set("resourceType", e.target.value as ResourceType)}
-            disabled={PROVIDER_RESOURCE_TYPES[state.provider].length === 1}
-          >
-            {PROVIDER_RESOURCE_TYPES[state.provider].map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+    <form className="space-y-8" onSubmit={handleSubmit} aria-label={initial ? "Edit watch" : "Create watch"}>
+      <div className="max-w-xl space-y-6">
+        <section className="space-y-4">
+          <SectionLabel>Target</SectionLabel>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="provider">Provider</Label>
+              <select
+                id="provider"
+                className={cn(controlClass, "mt-1.5 cursor-pointer")}
+                value={state.provider}
+                onChange={(e) => changeProvider(e.target.value as ProviderName)}
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="resourceType">Resource type</Label>
+              <select
+                id="resourceType"
+                className={cn(controlClass, "mt-1.5 cursor-pointer")}
+                value={state.resourceType}
+                onChange={(e) => set("resourceType", e.target.value as ResourceType)}
+                disabled={PROVIDER_RESOURCE_TYPES[state.provider].length === 1}
+              >
+                {PROVIDER_RESOURCE_TYPES[state.provider].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-      <div>
-        <Label htmlFor="label">Label</Label>
-        <Input
-          id="label"
-          className="mt-1.5"
-          placeholder="e.g. Carbone Friday"
-          value={state.label}
-          onChange={(e) => set("label", e.target.value)}
-        />
-        <FieldError>{errors.label}</FieldError>
-      </div>
+          <div>
+            <Label htmlFor="label">Label</Label>
+            <Input
+              id="label"
+              className="mt-1.5"
+              placeholder="e.g. Carbone Friday"
+              value={state.label}
+              onChange={(e) => set("label", e.target.value)}
+            />
+            <FieldError>{errors.label}</FieldError>
+          </div>
+        </section>
 
-      <div>
-        <Label htmlFor="venueQuery">Venue</Label>
-        <div className="mt-1.5 flex gap-2">
-          <Input
-            id="venueQuery"
-            placeholder="search by name or city, e.g. 34th street"
-            value={venueQuery}
-            onChange={(e) => setVenueQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void searchVenues();
-              }
-            }}
-          />
-          <Button type="button" variant="secondary" onClick={() => void searchVenues()} disabled={!venueQuery.trim()}>
-            <Search />
-            Search
-          </Button>
-        </div>
-        <FieldHint>{venueStatus}</FieldHint>
-        {venueMatches && venueMatches.length > 0 && (
-          <ul className="border-input bg-popover mt-2 max-h-48 space-y-1 overflow-y-auto rounded-md border p-1.5">
-            {venueMatches.map((m) => (
-              <li key={m.id}>
-                <button
-                  type="button"
-                  onClick={() => pickVenue(m)}
-                  className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors"
-                >
-                  <MapPin className="text-muted-foreground size-3.5 shrink-0" />
-                  <span className="truncate">
-                    {m.name}
-                    {m.city ? ` — ${m.city}` : ""}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {state.venueId && (
-          <p className="text-muted-foreground mt-2 text-sm">
-            Selected: <strong className="text-foreground">{state.venueLabel || state.venueId}</strong>{" "}
-            <code className="tnum bg-muted rounded px-1 py-0.5 text-xs">{state.venueId}</code>
-          </p>
-        )}
-        <FieldError>{errors["venue.id"]}</FieldError>
+        <section className="space-y-2">
+          <SectionLabel>Venue</SectionLabel>
+          <div className="flex gap-2">
+            <Input
+              id="venueQuery"
+              aria-label="Venue"
+              placeholder="search by name or city, e.g. 34th street"
+              value={venueQuery}
+              onChange={(e) => setVenueQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void searchVenues();
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void searchVenues()}
+              disabled={!venueQuery.trim()}
+            >
+              <Search />
+              Search
+            </Button>
+          </div>
+          <FieldHint>{venueStatus}</FieldHint>
+          {venueMatches && venueMatches.length > 0 && (
+            <ul className="border-input bg-popover max-h-48 space-y-1 overflow-y-auto rounded-md border p-1.5">
+              {venueMatches.map((m) => (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    onClick={() => pickVenue(m)}
+                    className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors"
+                  >
+                    <MapPin className="text-muted-foreground size-3.5 shrink-0" />
+                    <span className="truncate">
+                      {m.name}
+                      {m.city ? ` — ${m.city}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {state.venueId && (
+            <p className="text-muted-foreground text-sm">
+              Selected: <strong className="text-foreground">{state.venueLabel || state.venueId}</strong>
+            </p>
+          )}
+          <FieldError>{errors["venue.id"]}</FieldError>
+        </section>
       </div>
 
       {state.resourceType === "screening" && (
@@ -455,11 +501,11 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
 
           {screenings && screenings.length > 0 && (
             <>
-              <div className="mt-4">
+              <div className="mt-4 max-w-md">
                 <Label htmlFor="film">Movie</Label>
                 <select
                   id="film"
-                  className={cn(controlClass, "mt-1.5 cursor-pointer")}
+                  className={cn(controlClass, "mt-1.5 w-full cursor-pointer")}
                   value={state.filmId}
                   onChange={(e) => pickFilm(e.target.value)}
                 >
@@ -540,152 +586,149 @@ export function WatchForm({ initial, onSubmit, onCancel }: WatchFormProps): Reac
         </fieldset>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div>
-          <Label htmlFor="partySize">Party size</Label>
-          <Input
-            id="partySize"
-            type="number"
-            min={1}
-            max={20}
-            className="tnum mt-1.5"
-            value={state.partySize}
-            onChange={(e) => set("partySize", e.target.value)}
-          />
-          <FieldError>{errors.partySize}</FieldError>
-        </div>
-        <div>
-          <Label htmlFor="windowStart">Time window start</Label>
-          <Input
-            id="windowStart"
-            type="time"
-            className="tnum mt-1.5"
-            value={state.windowStart}
-            onChange={(e) => set("windowStart", e.target.value)}
-          />
-          <FieldError>{errors["timeWindow.start"]}</FieldError>
-        </div>
-        <div>
-          <Label htmlFor="windowEnd">Time window end</Label>
-          <Input
-            id="windowEnd"
-            type="time"
-            className="tnum mt-1.5"
-            value={state.windowEnd}
-            onChange={(e) => set("windowEnd", e.target.value)}
-          />
-          <FieldError>{errors["timeWindow.end"]}</FieldError>
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="timezone">Timezone (IANA)</Label>
-        <Input
-          id="timezone"
-          className="tnum mt-1.5 max-w-xs"
-          value={state.timezone}
-          onChange={(e) => set("timezone", e.target.value)}
-        />
-        <FieldError>{errors.timezone}</FieldError>
-      </div>
-
-      <fieldset className="border-border/70 rounded-lg border p-4">
-        <legend className="px-1">
-          <SectionLabel>Date range</SectionLabel>
-        </legend>
-        <div className="flex gap-2">
-          <label
-            className={cn(
-              "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-foreground",
-              "border-input text-muted-foreground flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
-            )}
-          >
-            <input
-              type="radio"
-              name="dateMode"
-              className="accent-primary"
-              checked={state.dateMode === "fixed"}
-              onChange={() => set("dateMode", "fixed")}
-            />
-            Fixed
-          </label>
-          <label
-            className={cn(
-              "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-foreground",
-              "border-input text-muted-foreground flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
-            )}
-          >
-            <input
-              type="radio"
-              name="dateMode"
-              className="accent-primary"
-              checked={state.dateMode === "rolling"}
-              onChange={() => set("dateMode", "rolling")}
-            />
-            Rolling
-          </label>
-        </div>
-        {state.dateMode === "fixed" ? (
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:max-w-sm">
+      <div className="max-w-xl space-y-6">
+        <section className="space-y-4">
+          <SectionLabel>Availability</SectionLabel>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div>
-              <Label htmlFor="rangeStart">Start date</Label>
+              <Label htmlFor="partySize">Party size</Label>
               <Input
-                id="rangeStart"
-                type="date"
+                id="partySize"
+                type="number"
+                min={1}
+                max={20}
                 className="tnum mt-1.5"
-                value={state.rangeStart}
-                onChange={(e) => set("rangeStart", e.target.value)}
+                value={state.partySize}
+                onChange={(e) => set("partySize", e.target.value)}
               />
+              <FieldError>{errors.partySize}</FieldError>
             </div>
             <div>
-              <Label htmlFor="rangeEnd">End date</Label>
+              <Label htmlFor="windowStart">Window start</Label>
               <Input
-                id="rangeEnd"
-                type="date"
+                id="windowStart"
+                type="time"
                 className="tnum mt-1.5"
-                value={state.rangeEnd}
-                onChange={(e) => set("rangeEnd", e.target.value)}
+                value={state.windowStart}
+                onChange={(e) => set("windowStart", e.target.value)}
               />
+              <FieldError>{errors["timeWindow.start"]}</FieldError>
+            </div>
+            <div>
+              <Label htmlFor="windowEnd">Window end</Label>
+              <Input
+                id="windowEnd"
+                type="time"
+                className="tnum mt-1.5"
+                value={state.windowEnd}
+                onChange={(e) => set("windowEnd", e.target.value)}
+              />
+              <FieldError>{errors["timeWindow.end"]}</FieldError>
             </div>
           </div>
-        ) : (
-          <div className="mt-4 max-w-[10rem]">
-            <Label htmlFor="rollingDays">Rolling days ahead</Label>
+
+          <div className="max-w-[14rem]">
+            <Label htmlFor="timezone">Timezone (IANA)</Label>
             <Input
-              id="rollingDays"
-              type="number"
-              min={1}
+              id="timezone"
               className="tnum mt-1.5"
-              value={state.rollingDays}
-              onChange={(e) => set("rollingDays", e.target.value)}
+              value={state.timezone}
+              onChange={(e) => set("timezone", e.target.value)}
             />
+            <FieldError>{errors.timezone}</FieldError>
           </div>
-        )}
-        <FieldError>{errors.dateRange}</FieldError>
-      </fieldset>
+        </section>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <label className="has-[:checked]:border-primary has-[:checked]:bg-primary/5 border-input flex flex-1 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors">
-          <input
-            type="checkbox"
-            className="accent-primary size-4 cursor-pointer"
-            checked={state.autobook}
-            onChange={(e) => set("autobook", e.target.checked)}
-          />
-          <span className="flex items-center gap-1.5 text-sm font-medium">
+        <fieldset className="space-y-3">
+          <legend className="mb-1">
+            <SectionLabel>Date range</SectionLabel>
+          </legend>
+          <div className="flex gap-2">
+            <label
+              className={cn(
+                "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-foreground",
+                "border-input text-muted-foreground flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
+              )}
+            >
+              <input
+                type="radio"
+                name="dateMode"
+                className="accent-primary"
+                checked={state.dateMode === "fixed"}
+                onChange={() => set("dateMode", "fixed")}
+              />
+              Fixed
+            </label>
+            <label
+              className={cn(
+                "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-foreground",
+                "border-input text-muted-foreground flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
+              )}
+            >
+              <input
+                type="radio"
+                name="dateMode"
+                className="accent-primary"
+                checked={state.dateMode === "rolling"}
+                onChange={() => set("dateMode", "rolling")}
+              />
+              Rolling
+            </label>
+          </div>
+          {state.dateMode === "fixed" ? (
+            <div className="grid grid-cols-2 gap-3 sm:max-w-sm">
+              <div>
+                <Label htmlFor="rangeStart">Start date</Label>
+                <Input
+                  id="rangeStart"
+                  type="date"
+                  className="tnum mt-1.5"
+                  value={state.rangeStart}
+                  onChange={(e) => set("rangeStart", e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="rangeEnd">End date</Label>
+                <Input
+                  id="rangeEnd"
+                  type="date"
+                  className="tnum mt-1.5"
+                  value={state.rangeEnd}
+                  onChange={(e) => set("rangeEnd", e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="max-w-[10rem]">
+              <Label htmlFor="rollingDays">Rolling days ahead</Label>
+              <Input
+                id="rollingDays"
+                type="number"
+                min={1}
+                className="tnum mt-1.5"
+                value={state.rollingDays}
+                onChange={(e) => set("rollingDays", e.target.value)}
+              />
+            </div>
+          )}
+          <FieldError>{errors.dateRange}</FieldError>
+        </fieldset>
+
+        <section className="flex items-center gap-6">
+          <label htmlFor="autobook" className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <Switch
+              id="autobook"
+              checked={state.autobook}
+              onCheckedChange={(checked) => set("autobook", checked)}
+            />
             <Zap className="text-primary size-3.5" />
             Autobook
-          </span>
-        </label>
-        <label className="has-[:checked]:border-primary has-[:checked]:bg-primary/5 border-input flex flex-1 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors">
-          <input
-            type="checkbox"
-            className="accent-primary size-4 cursor-pointer"
-            checked={state.enabled}
-            onChange={(e) => set("enabled", e.target.checked)}
-          />
-          <span className="text-sm font-medium">Enabled</span>
-        </label>
+          </label>
+          <label htmlFor="enabled" className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <Switch id="enabled" checked={state.enabled} onCheckedChange={(checked) => set("enabled", checked)} />
+            Enabled
+          </label>
+        </section>
       </div>
 
       <div className="border-border/70 flex items-center justify-end gap-2 border-t pt-5">

@@ -82,7 +82,7 @@ export function WatchesPage(): React.JSX.Element {
     return (
       <section>
         <PageHeader
-          eyebrow={editing === "new" ? "New watch" : "Editing"}
+          eyebrow="Watches"
           title={editing === "new" ? "New watch" : `Edit ${editing.label}`}
           description="Point Bookr at a venue and the exact availability worth pinging you about."
         />

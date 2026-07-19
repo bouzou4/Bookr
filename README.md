@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/bookr-banner.svg" alt="Bookr" width="460">
+  <img src="docs/media/bookr-banner.png" alt="Bookr" width="460">
 </p>
 
 A pluggable reservation scanner. It watches a booking provider for newly-freed
